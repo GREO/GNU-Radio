@@ -1021,7 +1021,7 @@ usrp_standard_tx::set_tx_freq (int channel, double freq)
   coarse_mod_t	cm;
   double	coarse;
 
-  assert (dac_rate () == 128000000);
+  //assert (dac_rate () == 128000000);
 
   if (freq < -44e6)		// too low
     return false;
