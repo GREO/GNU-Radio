@@ -61,6 +61,9 @@ class app_top_block(stdgui2.std_top_block):
                           help="select Rx Antenna (only on RFX-series boards)")
         parser.add_option("-d", "--decim", type="int", default=16,
                           help="set fgpa decimation rate to DECIM [default=%default]")
+        parser.add_option("-F", "--fpga-freq", type="eng_float", default=None,
+                          help="set USRP reference clock frequency to FPGA_FREQ",
+                          metavar="FPGA_FREQ")
         parser.add_option("-f", "--freq", type="eng_float", default=None,
                           help="set frequency to FREQ", metavar="FREQ")
         parser.add_option("-g", "--gain", type="eng_float", default=None,
@@ -98,6 +101,9 @@ class app_top_block(stdgui2.std_top_block):
           #standard fpga firmware "std_2rxhb_2tx.rbf" 
           #contains 2 Rx paths with halfband filters and 2 tx paths (the default)
           self.u = usrp.source_c(which=options.which, decim_rate=options.decim)
+
+        if options.fpga_freq is not None:
+            self.u.set_fpga_master_clock_freq(long(options.fpga_freq))
 
         if options.rx_subdev_spec is None:
             options.rx_subdev_spec = pick_subdevice(self.u)
