@@ -1,0 +1,62 @@
+#
+# Copyright 2008, 2009 Free Software Foundation, Inc.
+#
+# This file is part of GNU Radio
+#
+# GNU Radio is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3, or (at your option)
+# any later version.
+#
+# GNU Radio is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with GNU Radio; see the file COPYING.  If not, write to
+# the Free Software Foundation, Inc., 51 Franklin Street,
+# Boston, MA 02110-1301, USA.
+#
+
+include $(top_srcdir)/grc/Makefile.inc
+
+SUBDIRS = \
+	base \
+	blocks \
+	examples \
+	grc_gnuradio \
+	gui \
+	python \
+	scripts
+
+## append freedesktop to the list of subdirs when xdg utils are present
+if XDG_UTILS
+SUBDIRS += freedesktop
+endif
+
+ourpythondir = $(grc_src_prefix)
+ourpython_PYTHON = __init__.py
+
+etcdir = $(gr_sysconfdir)
+dist_etc_DATA = grc.conf
+
+EXTRA_DIST = \
+	$(srcdir)/__init__.py.in \
+	$(srcdir)/grc.conf.in
+
+BUILT_SOURCES = \
+	__init__.py \
+	grc.conf
+
+__init__.py: $(srcdir)/__init__.py.in Makefile
+	sed \
+		-e 's|@VERSION[@]|$(VERSION)|g' \
+	$< > $@
+
+grc.conf: $(srcdir)/grc.conf.in Makefile
+	sed \
+		-e 's|@pythonw[@]|$(PYTHONW)|g' \
+		-e 's|@blocksdir[@]|$(grc_blocksdir)|g' \
+		-e 's|@docdir[@]|$(gr_docdir)|g' \
+	$< > $@

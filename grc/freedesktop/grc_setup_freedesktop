@@ -1,0 +1,58 @@
+#!/bin/bash
+##################################################
+# setup grc on a freedesktop platform
+# $1 should be install or uninstall
+# $2 is the optional path to the files
+# when $2 is unspecified, the path is:
+# /home/jcorgan/.local/share/gnuradio/grc/freedesktop
+##################################################
+
+ICON_SIZES="32 48 64 128 256"
+MENU_ITEMS="grc usrp2_probe usrp_probe"
+if [ -n "$2" ]; then
+	SRCDIR="$2"
+else
+	SRCDIR="/home/jcorgan/.local/share/gnuradio/grc/freedesktop"
+fi
+
+case "$1" in
+'install')
+	echo "Begin freedesktop install..."
+	for size in ${ICON_SIZES}; do \
+		echo "Install icon: ${size}x${size}"
+		xdg-icon-resource install --context mimetypes --theme gnome --size ${size} ${SRCDIR}/grc-icon-${size}.png application-gnuradio-grc; \
+		xdg-icon-resource install --context mimetypes --size ${size} ${SRCDIR}/grc-icon-${size}.png application-gnuradio-grc; \
+		xdg-icon-resource install --context apps --theme gnome --size ${size} ${SRCDIR}/grc-icon-${size}.png gnuradio-grc; \
+		xdg-icon-resource install --context apps --size ${size} ${SRCDIR}/grc-icon-${size}.png gnuradio-grc; \
+	done
+	echo "Install mime type"
+	xdg-mime install ${SRCDIR}/gnuradio-grc.xml
+	echo "Install menu items"
+	for menu_item in ${MENU_ITEMS}; do \
+		xdg-desktop-menu install ${SRCDIR}/gnuradio-${menu_item}.desktop; \
+	done
+	echo "Done!"
+	echo ""
+	;;
+'uninstall')
+	echo "Begin freedesktop uninstall..."
+	for size in ${ICON_SIZES}; do \
+		echo "Uninstall icon: ${size}x${size}"
+		xdg-icon-resource uninstall --context mimetypes --theme gnome --size ${size} application-gnuradio-grc; \
+		xdg-icon-resource uninstall --context mimetypes --size ${size} application-gnuradio-grc; \
+		xdg-icon-resource uninstall --context apps --theme gnome --size ${size} gnuradio-grc; \
+		xdg-icon-resource uninstall --context apps --size ${size} gnuradio-grc; \
+	done
+	echo "Uninstall mime type"
+	xdg-mime uninstall ${SRCDIR}/gnuradio-grc.xml
+	echo "Uninstall menu items"
+	for menu_item in ${MENU_ITEMS}; do \
+		xdg-desktop-menu uninstall gnuradio-${menu_item}.desktop; \
+	done
+	echo "Done!"
+	echo ""
+	;;
+*)
+	echo "Usage: $0 [install|uninstall]"
+	;;
+esac

@@ -1,0 +1,11 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: pmt
+Description: The GNU Radio Polymorphic Type library
+Requires: gnuradio-omnithread
+Version: @VERSION@
+Libs: -L${libdir} -lpmt
+Cflags: -I${includedir} @DEFINES@
