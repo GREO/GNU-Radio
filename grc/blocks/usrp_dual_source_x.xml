@@ -8,24 +8,38 @@
 	<name>USRP Dual Source</name>
 	<key>usrp_dual_source_x</key>
 	<import>from grc_gnuradio import usrp as grc_usrp</import>
-	<make>grc_usrp.dual_source_$(type.fcn)(which=$which, rx_ant_a=$rx_ant_a, rx_ant_b=$rx_ant_b)
+	<make>grc_usrp.dual_source_$(type.fcn)(
+	which=$which,
+	rx_ant_a=$rx_ant_a, rx_ant_b=$rx_ant_b,
+	rx_source_a=$rx_source_a, rx_source_b=$rx_source_b,
+)
 #if $format()
 self.$(id).set_format(width=$format.width, shift=$format.shift)
 #end if
 self.$(id).set_decim_rate($decimation)
-self.$(id).set_frequency_a($frequency_a, verbose=True)
-self.$(id).set_frequency_b($frequency_b, verbose=True)
-self.$(id).set_gain_a($gain_a)
-self.$(id).set_gain_b($gain_b)
+self.$(id).set_frequency_a($frequency_a, verbose=True#slurp
 #if $lo_offset_a() != float('inf')
-self.$(id).set_lo_offset_a($lo_offset_a)
+, lo_offset=$lo_offset_a#slurp
 #end if
+)
+self.$(id).set_frequency_b($frequency_b, verbose=True#slurp
 #if $lo_offset_b() != float('inf')
-self.$(id).set_lo_offset_b($lo_offset_b)
-#end if</make>
+, lo_offset=$lo_offset_b#slurp
+#end if
+)
+self.$(id).set_gain_a($gain_a)
+self.$(id).set_gain_b($gain_b)</make>
 	<callback>set_decim_rate($decimation)</callback>
-	<callback>set_frequency_a($frequency_a)</callback>
-	<callback>set_frequency_b($frequency_b)</callback>
+	<callback>set_frequency_a($frequency_a#slurp
+#if $lo_offset_a() != float('inf')
+, lo_offset=$lo_offset_a#slurp
+#end if
+)</callback>
+	<callback>set_frequency_b($frequency_b#slurp
+#if $lo_offset_b() != float('inf')
+, lo_offset=$lo_offset_b#slurp
+#end if
+)</callback>
 	<callback>set_gain_a($gain_a)</callback>
 	<callback>set_gain_b($gain_b)</callback>
 	<param>
@@ -177,6 +191,36 @@ self.$(id).set_lo_offset_b($lo_offset_b)
 		<option>
 			<name>RX2</name>
 			<key>RX2</key>
+		</option>
+	</param>
+	<param>
+		<name>RX Source A</name>
+		<key>rx_source_a</key>
+		<value>A</value>
+		<type>string</type>
+		<hide>#if $rx_source_a() == 'A' then 'part' else 'none'#</hide>
+		<option>
+			<name>Side A</name>
+			<key>A</key>
+		</option>
+		<option>
+			<name>Side B</name>
+			<key>B</key>
+		</option>
+	</param>
+	<param>
+		<name>RX Source B</name>
+		<key>rx_source_b</key>
+		<value>B</value>
+		<type>string</type>
+		<hide>#if $rx_source_b() == 'B' then 'part' else 'none'#</hide>
+		<option>
+			<name>Side A</name>
+			<key>A</key>
+		</option>
+		<option>
+			<name>Side B</name>
+			<key>B</key>
 		</option>
 	</param>
 	<source>

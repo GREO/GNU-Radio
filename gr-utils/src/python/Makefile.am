@@ -23,14 +23,19 @@ include $(top_srcdir)/Makefile.common
 
 EXTRA_DIST = \
     $(bin_SCRIPTS) \
-    README.plot
+    README.plot \
+    pyqt_plot.ui \
+    pyqt_filter.ui
 
 ourpythondir = $(grpythondir)
 
 ourpython_PYTHON = \
-    plot_data.py
+    plot_data.py   \
+    pyqt_plot.py   \
+    pyqt_filter.py
 
 bin_SCRIPTS = \
+    create-gnuradio-out-of-tree-project \
     gr_plot_char.py \
     gr_plot_const.py \
     gr_plot_fft.py \
@@ -43,6 +48,8 @@ bin_SCRIPTS = \
     gr_plot_int.py \
     gr_plot_iq.py \
     gr_plot_short.py \
+    gr_plot_qt.py \
+    gr_filter_design.py \
     lsusrp \
     usrp_fft.py \
     usrp_oscope.py \
@@ -50,9 +57,9 @@ bin_SCRIPTS = \
     usrp_rx_cfile.py \
     usrp_rx_nogui.py \
     usrp_siggen.py \
+    usrp_siggen_gui.py \
     usrp_test_counting.py \
     usrp_test_loopback.py \
     usrp2_fft.py \
-    usrp2_rx_cfile.py \
-    usrp2_siggen.py \
-    usrp2_siggen_gui.py
+    usrp2_rx_cfile.py
+

@@ -1,5 +1,5 @@
 #
-# Copyright 2004,2005,2006,2008 Free Software Foundation, Inc.
+# Copyright 2004,2005,2006,2008,2010 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -54,6 +54,7 @@ noinst_PYTHON = 			\
 	qa_cma_equalizer.py		\
 	qa_complex_to_xxx.py		\
 	qa_constellation_decoder_cb.py  \
+	qa_copy.py			\
 	qa_correlate_access_code.py	\
 	qa_delay.py			\
 	qa_diff_encoder.py		\
@@ -96,4 +97,5 @@ noinst_PYTHON = 			\
 	qa_unpack_k_bits.py		\
 	qa_repeat.py                    \
 	qa_scrambler.py			\
+	qa_udp_sink_source.py		\
 	qa_vector_sink_source.py	

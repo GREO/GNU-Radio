@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2004,2005,2007,2008 Free Software Foundation, Inc.
+# Copyright 2004,2005,2007,2008,2010 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -39,7 +39,7 @@ def pick_subdevice(u):
     """
     if u.db(0, 0).dbid() >= 0:       # dbid is < 0 if there's no d'board or a problem
         return (0, 0)
-    if u.db(0, 0).dbid() >= 0:
+    if u.db(1, 0).dbid() >= 0:
         return (1, 0)
     return (0, 0)
 
@@ -255,7 +255,7 @@ class app_top_block(stdgui2.std_top_block):
                 self.myform['baseband'].set_value(r.baseband_freq)
                 self.myform['ddc'].set_value(r.dxc_freq)
 	    if not self.options.oscilloscope:
-		self.scope.win.set_baseband_freq(target_freq)
+		self.scope.set_baseband_freq(target_freq)
     	    return True
 
         return False

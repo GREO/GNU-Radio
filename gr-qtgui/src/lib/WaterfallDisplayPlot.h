@@ -45,6 +45,9 @@ public:
   static const int INTENSITY_COLOR_MAP_TYPE_INCANDESCENT = 3;
   static const int INTENSITY_COLOR_MAP_TYPE_USER_DEFINED = 4;
 
+public slots:
+  void resizeSlot( QSize *s );
+
 signals:
   void UpdatedLowerIntensityLevel(const double);
   void UpdatedUpperIntensityLevel(const double);
@@ -66,9 +69,9 @@ private:
 
   timespec _lastReplot;
 
-  int64_t _numPoints;
+  bool _useCenterFrequencyFlag;
 
-  double _displayIntervalTime;
+  int64_t _numPoints;
 
   int _intensityColorMapType;
   QColor _userDefinedLowIntensityColor;

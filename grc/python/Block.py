@@ -18,10 +18,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 """
 
 from .. base.Block import Block as _Block
+from .. gui.Block import Block as _GUIBlock
 import extract_docs
 import extract_category
 
-class Block(_Block):
+class Block(_Block, _GUIBlock):
+
+	def is_virtual_sink(self): return self.get_key() == 'virtual_sink'
+	def is_virtual_source(self): return self.get_key() == 'virtual_source'
 
 	##for make source to keep track of indexes
 	_source_count = 0
@@ -48,13 +52,13 @@ class Block(_Block):
 			flow_graph=flow_graph,
 			n=n,
 		)
+		_GUIBlock.__init__(self)
 
 	def validate(self):
 		"""
 		Validate this block.
 		Call the base class validate.
 		Evaluate the checks: each check must evaluate to True.
-		Adjust the nports.
 		"""
 		_Block.validate(self)
 		#evaluate the checks
@@ -65,17 +69,23 @@ class Block(_Block):
 				try: assert check_eval
 				except AssertionError: self.add_error_message('Check "%s" failed.'%check)
 			except: self.add_error_message('Check "%s" did not evaluate.'%check)
+
+	def rewrite(self):
+		"""
+		Add and remove ports to adjust for the nports.
+		"""
+		_Block.rewrite(self)
 		#adjust nports
-		for ports, Port in (
-			(self._sources, self.get_parent().get_parent().Source),
-			(self._sinks, self.get_parent().get_parent().Sink),
+		for get_ports, get_port in (
+			(self.get_sources, self.get_source),
+			(self.get_sinks, self.get_sink),
 		):
-			#how many ports?
-			num_ports = len(ports)
+			#how many streaming (non-message) ports?
+			num_ports = len(filter(lambda p: p.get_type() != 'msg', get_ports()))
 			#do nothing for 0 ports
 			if not num_ports: continue
 			#get the nports setting
-			port0 = ports[str(0)]
+			port0 = get_port(str(0))
 			nports = port0.get_nports()
 			#do nothing for no nports
 			if not nports: continue
@@ -85,19 +95,21 @@ class Block(_Block):
 			if nports < num_ports:
 				#remove the connections
 				for key in map(str, range(nports, num_ports)):
-					port = ports[key]
+					port = get_port(key)
 					for connection in port.get_connections():
 						self.get_parent().remove_element(connection)
 				#remove the ports
-				for key in map(str, range(nports, num_ports)): ports.pop(key)
+				for key in map(str, range(nports, num_ports)):
+					get_ports().remove(get_port(key))
 				continue
 			#add more ports
 			if nports > num_ports:
 				for key in map(str, range(num_ports, nports)):
-					n = port0._n
-					n['key'] = key
-					port = Port(self, n)
-					ports[key] = port
+					prev_port = get_port(str(int(key)-1))
+					get_ports().insert(
+						get_ports().index(prev_port)+1,
+						prev_port.copy(new_key=key),
+					)
 				continue
 
 	def port_controller_modify(self, direction):

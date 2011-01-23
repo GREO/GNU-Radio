@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 /*
- * Copyright 2008,2009 Free Software Foundation, Inc.
+ * Copyright 2008,2009,2010 Free Software Foundation, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,9 +24,10 @@
 #include <usrp2/tune_result.h>
 #include <usrp2/copiers.h>
 #include <gruel/inet.h>
+#include <gruel/realtime.h>
+#include <boost/bind.hpp>
 #include <usrp2_types.h>
 #include "usrp2_impl.h"
-#include "usrp2_thread.h"
 #include "eth_buffer.h"
 #include "pktfilter.h"
 #include "control.h"
@@ -106,7 +107,7 @@ namespace usrp2 {
     //assert((((uintptr_t) p) % 4) == 0);		// must be 4-byte aligned
 
     u2_fixed_hdr_t *fh = static_cast<u2_fixed_hdr_t *>(p);
-    
+
     // FIXME unaligned loads!
     md->word0 = u2p_word0(fh);
     md->timestamp = u2p_timestamp(fh);
@@ -129,15 +130,15 @@ namespace usrp2 {
 
 
   usrp2::impl::impl(const std::string &ifc, props *p, size_t rx_bufsize)
-    : d_eth_buf(new eth_buffer(rx_bufsize)), d_interface_name(ifc), d_pf(0), d_bg_thread(0),
+    : d_eth_buf(new eth_buffer(rx_bufsize)), d_interface_name(ifc), d_pf(0),
       d_bg_running(false), d_rx_seqno(-1), d_tx_seqno(0), d_next_rid(0),
-      d_num_rx_frames(0), d_num_rx_missing(0), d_num_rx_overruns(0), d_num_rx_bytes(0), 
-      d_num_enqueued(0), d_enqueued_mutex(), d_bg_pending_cond(&d_enqueued_mutex),
-      d_channel_rings(NCHANS), d_tx_interp(0), d_rx_decim(0)
+      d_num_rx_frames(0), d_num_rx_missing(0), d_num_rx_overruns(0), d_num_rx_bytes(0),
+      d_num_enqueued(0), d_enqueued_mutex(), d_bg_pending_cond(),
+      d_channel_rings(NCHANS), d_tx_interp(0), d_rx_decim(0), d_dont_enqueue(true)
   {
     if (!d_eth_buf->open(ifc, htons(U2_ETHERTYPE)))
       throw std::runtime_error("Unable to register USRP2 protocol");
-    
+
     d_addr = p->addr;
 
     // Create a packet filter for U2_ETHERTYPE packets sourced from target USRP2
@@ -146,14 +147,14 @@ namespace usrp2 {
     d_pf = pktfilter::make_ethertype_inbound_target(U2_ETHERTYPE, (const unsigned char*)&(usrp_mac.addr));
     if (!d_pf || !d_eth_buf->attach_pktfilter(d_pf))
       throw std::runtime_error("Unable to attach packet filter.");
-    
+
     if (USRP2_IMPL_DEBUG)
       std::cerr << "usrp2 constructor: using USRP2 at " << d_addr << std::endl;
 
     memset(d_pending_replies, 0, sizeof(d_pending_replies));
 
-    d_bg_thread = new usrp2_thread(this);
-    d_bg_thread->start();
+    // Kick off receive thread
+    start_bg();
 
     // In case the USRP2 was left streaming RX
     // FIXME: only one channel right now
@@ -199,30 +200,29 @@ namespace usrp2 {
 
     if (!set_rx_decim(12))
       std::cerr << "usrp2::ctor set_rx_decim failed\n";
-      
+
     // set workable defaults for scaling
     if (!set_rx_scale_iq(DEFAULT_RX_SCALE, DEFAULT_RX_SCALE))
       std::cerr << "usrp2::ctor set_rx_scale_iq failed\n";
   }
-  
+
   usrp2::impl::~impl()
   {
     stop_bg();
-    d_bg_thread = 0; // thread class deletes itself
     delete d_pf;
     d_eth_buf->close();
     delete d_eth_buf;
-    
+
     if (USRP2_IMPL_DEBUG) {
       std::cerr << std::endl
-                << "usrp2 destructor: received " << d_num_rx_frames 
+                << "usrp2 destructor: received " << d_num_rx_frames
 		<< " frames, with " << d_num_rx_missing << " lost ("
 		<< (d_num_rx_frames == 0 ? 0 : (int)(100.0*d_num_rx_missing/d_num_rx_frames))
 		<< "%), totaling " << d_num_rx_bytes
 		<< " bytes" << std::endl;
     }
   }
-  
+
   bool
   usrp2::impl::parse_mac_addr(const std::string &s, u2_mac_addr_t *p)
   {
@@ -232,14 +232,14 @@ namespace usrp2 {
     p->addr[3] = 0x85;
     p->addr[4] = 0x30;
     p->addr[5] = 0x00;
-    
+
     int len = s.size();
-    
+
     switch (len){
-      
+
     case 5:
       return sscanf(s.c_str(), "%hhx:%hhx", &p->addr[4], &p->addr[5]) == 2;
-      
+
     case 17:
       return sscanf(s.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
 		    &p->addr[0], &p->addr[1], &p->addr[2],
@@ -248,36 +248,36 @@ namespace usrp2 {
       return false;
     }
   }
-  
+
   void
   usrp2::impl::init_et_hdrs(u2_eth_packet_t *p, const std::string &dst)
   {
     p->ehdr.ethertype = htons(U2_ETHERTYPE);
-    parse_mac_addr(dst, &p->ehdr.dst); 
+    parse_mac_addr(dst, &p->ehdr.dst);
     memcpy(&p->ehdr.src, d_eth_buf->mac(), 6);
     p->thdr.flags = 0; // FIXME transport header values?
     p->thdr.seqno = d_tx_seqno++;
     p->thdr.ack = 0;
   }
-  
-  void 
+
+  void
   usrp2::impl::init_etf_hdrs(u2_eth_packet_t *p, const std::string &dst,
 			     int word0_flags, int chan, uint32_t timestamp)
   {
     init_et_hdrs(p, dst);
     u2p_set_word0(&p->fixed, word0_flags, chan);
     u2p_set_timestamp(&p->fixed, timestamp);
-    
+
     if (chan == CONTROL_CHAN) { // no sequence numbers, back it out
       p->thdr.seqno = 0;
       d_tx_seqno--;
     }
   }
-  
+
   void
   usrp2::impl::init_config_rx_v2_cmd(op_config_rx_v2_cmd *cmd)
   {
-    memset(cmd, 0, sizeof(*cmd)); 
+    memset(cmd, 0, sizeof(*cmd));
     init_etf_hdrs(&cmd->h, d_addr, 0, CONTROL_CHAN, -1);
     cmd->op.opcode = OP_CONFIG_RX_V2;
     cmd->op.len = sizeof(cmd->op);
@@ -289,7 +289,7 @@ namespace usrp2 {
   void
   usrp2::impl::init_config_tx_v2_cmd(op_config_tx_v2_cmd *cmd)
   {
-    memset(cmd, 0, sizeof(*cmd)); 
+    memset(cmd, 0, sizeof(*cmd));
     init_etf_hdrs(&cmd->h, d_addr, 0, CONTROL_CHAN, -1);
     cmd->op.opcode = OP_CONFIG_TX_V2;
     cmd->op.len = sizeof(cmd->op);
@@ -298,22 +298,35 @@ namespace usrp2 {
     cmd->eop.len = sizeof(cmd->eop);
   }
 
+
   bool
-  usrp2::impl::transmit_cmd(void *cmd, size_t len, pending_reply *p, double secs)
+  usrp2::impl::transmit_cmd(void *cmd_, size_t len_)
   {
-    if (p)    
-      d_pending_replies[p->rid()] = p;
-    
-    // Transmit command
-    if (d_eth_buf->tx_frame(cmd, len) != eth_buffer::EB_OK) {
+    const void *cmd = cmd_;
+    int len = len_;
+    unsigned char tmp[64];
+
+    if (len_ < 64){		// pad to minimum ethernet frame size
+      memset(tmp, 0, sizeof(tmp));
+      memcpy(tmp, cmd_, len_);
+      cmd = tmp;
+      len = sizeof(tmp);
+    }
+
+    return d_eth_buf->tx_frame(cmd, len) == eth_buffer::EB_OK;
+  }
+
+  bool
+  usrp2::impl::transmit_cmd_and_wait(void *cmd, size_t len, pending_reply *p, double secs)
+  {
+    d_pending_replies[p->rid()] = p;
+
+    if (!transmit_cmd(cmd, len)){
       d_pending_replies[p->rid()] = 0;
       return false;
     }
 
-    int res = 1;
-    if (p)
-      res = p->wait(secs);
-      
+    int res = p->wait_for_completion(secs);
     d_pending_replies[p->rid()] = 0;
     return res == 1;
   }
@@ -323,18 +336,24 @@ namespace usrp2 {
   // ----------------------------------------------------------------
 
   void
+  usrp2::impl::start_bg()
+  {
+    d_rx_tg.create_thread(boost::bind(&usrp2::impl::bg_loop, this));
+  }
+
+  void
   usrp2::impl::stop_bg()
   {
     d_bg_running = false;
-    d_bg_pending_cond.signal();
-    
-    void *dummy_status;
-    d_bg_thread->join(&dummy_status);  
+    d_bg_pending_cond.notify_one(); // FIXME: check if needed
+    d_rx_tg.join_all();
   }
-  
+
   void
   usrp2::impl::bg_loop()
   {
+    gruel::enable_realtime_scheduling();
+
     d_bg_running = true;
     while(d_bg_running) {
       DEBUG_LOG(":");
@@ -343,20 +362,20 @@ namespace usrp2 {
       // rings, and signal blocked API threads
       int res = d_eth_buf->rx_frames(this, 100); // FIXME magic timeout
       if (res == eth_buffer::EB_ERROR)
-	break;  
+	break;
 
       // Wait for user API thread(s) to process all enqueued packets.
-      // The channel ring thread that decrements d_num_enqueued to zero 
+      // The channel ring thread that decrements d_num_enqueued to zero
       // will signal this thread to continue.
       {
-        omni_mutex_lock l(d_enqueued_mutex);
+        gruel::scoped_lock l(d_enqueued_mutex);
         while(d_num_enqueued > 0 && d_bg_running)
-	  d_bg_pending_cond.wait();
+	  d_bg_pending_cond.wait(l);
       }
     }
     d_bg_running = false;
   }
-  
+
   //
   // passed to eth_buffer::rx_frames
   //
@@ -373,6 +392,10 @@ namespace usrp2 {
       return handle_control_packet(base, len);
     }
     else {				// data packets
+
+      if (d_dont_enqueue)		// toss packet
+	return data_handler::RELEASE;
+
       return handle_data_packet(base, len);
     }
 
@@ -384,11 +407,11 @@ namespace usrp2 {
   {
     // point to beginning of payload (subpackets)
     unsigned char *p = (unsigned char *)base + sizeof(u2_eth_packet_t);
-    
+
     // FIXME (p % 4) == 2.  Not good.  Must watch for unaligned loads.
 
     // FIXME iterate over payload, handling more than a single subpacket.
-    
+
     int opcode = p[0];
     unsigned int oplen = p[1];
     unsigned int rid = p[2];
@@ -400,11 +423,11 @@ namespace usrp2 {
 	std::cerr << "usrp2: mismatched command reply length (expected: "
 		  << buflen << " got: " << oplen << "). "
 		  << "op = " << opcode_to_string(opcode) << std::endl;
-      }     
-    
+      }
+
       // Copy reply into caller's buffer
       memcpy(rp->buffer(), p, std::min(oplen, buflen));
-      rp->signal();
+      rp->notify_completion();
       d_pending_replies[rid] = 0;
       return data_handler::RELEASE;
     }
@@ -413,26 +436,26 @@ namespace usrp2 {
     DEBUG_LOG("l");
     return data_handler::RELEASE;
   }
-  
+
   data_handler::result
   usrp2::impl::handle_data_packet(const void *base, size_t len)
   {
     u2_eth_samples_t *pkt = (u2_eth_samples_t *)base;
     d_num_rx_frames++;
     d_num_rx_bytes += len;
-    
+
     /* --- FIXME start of fake transport layer handler --- */
 
     if (d_rx_seqno != -1) {
       int expected_seqno = (d_rx_seqno + 1) & 0xFF;
-      int seqno = pkt->hdrs.thdr.seqno; 
-      
+      int seqno = pkt->hdrs.thdr.seqno;
+
       if (seqno != expected_seqno) {
 	::write(2, "S", 1); // missing sequence number
 	int missing = seqno - expected_seqno;
 	if (missing < 0)
 	  missing += 256;
-	
+
 	d_num_rx_overruns++;
 	d_num_rx_missing += missing;
       }
@@ -446,15 +469,15 @@ namespace usrp2 {
     unsigned int chan = u2p_chan(&pkt->hdrs.fixed);
 
     {
-      omni_mutex_lock l(d_channel_rings_mutex);
+      gruel::scoped_lock l(d_channel_rings_mutex);
 
       if (!d_channel_rings[chan]) {
 	DEBUG_LOG("!");
 	return data_handler::RELEASE; 	// discard packet, no channel handler
       }
-      
+
       // Strip off ethernet header and transport header and enqueue the rest
-      
+
       size_t offset = offsetof(u2_eth_samples_t, hdrs.fixed);
       if (d_channel_rings[chan]->enqueue(&pkt->hdrs.fixed, len-offset)) {
 	inc_enqueued();
@@ -464,7 +487,7 @@ namespace usrp2 {
       else {
 	DEBUG_LOG("!");
 	return data_handler::RELEASE;	// discard, no room in channel ring
-      }  	
+      }
       return data_handler::RELEASE;
     }
   }
@@ -474,7 +497,28 @@ namespace usrp2 {
   // 			       Receive
   // ----------------------------------------------------------------
 
-  bool 
+  bool
+  usrp2::impl::set_rx_antenna(int ant){
+    op_config_mimo_cmd cmd;
+    op_generic_t reply;
+
+    memset(&cmd, 0, sizeof(cmd));
+    init_etf_hdrs(&cmd.h, d_addr, 0, CONTROL_CHAN, -1);
+    cmd.op.opcode = OP_RX_ANTENNA;
+    cmd.op.len = sizeof(cmd.op);
+    cmd.op.rid = d_next_rid++;
+    cmd.op.flags = ant;
+    cmd.eop.opcode = OP_EOP;
+    cmd.eop.len = sizeof(cmd.eop);
+
+    pending_reply p(cmd.op.rid, &reply, sizeof(reply));
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+      return false;
+
+    return ntohx(reply.ok) == 1;
+  }
+
+  bool
   usrp2::impl::set_rx_gain(double gain)
   {
     op_config_rx_v2_cmd cmd;
@@ -483,15 +527,15 @@ namespace usrp2 {
     init_config_rx_v2_cmd(&cmd);
     cmd.op.valid = htons(CFGV_GAIN);
     cmd.op.gain = htons(u2_double_to_fxpt_gain(gain));
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
     return success;
   }
-  
+
   bool
   usrp2::impl::set_rx_lo_offset(double frequency)
   {
@@ -510,9 +554,9 @@ namespace usrp2 {
 
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -530,26 +574,26 @@ namespace usrp2 {
     u2_fxpt_freq_t fxpt = u2_double_to_fxpt_freq(frequency);
     cmd.op.freq_hi = htonl(u2_fxpt_freq_hi(fxpt));
     cmd.op.freq_lo = htonl(u2_fxpt_freq_lo(fxpt));
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
     if (result && success) {
       result->baseband_freq =
-        u2_fxpt_freq_to_double( 
-	  u2_fxpt_freq_from_hilo(ntohl(reply.baseband_freq_hi), 
+        u2_fxpt_freq_to_double(
+	  u2_fxpt_freq_from_hilo(ntohl(reply.baseband_freq_hi),
 				 ntohl(reply.baseband_freq_lo)));
 
       result->dxc_freq =
-        u2_fxpt_freq_to_double( 
-	  u2_fxpt_freq_from_hilo(ntohl(reply.ddc_freq_hi), 
+        u2_fxpt_freq_to_double(
+	  u2_fxpt_freq_from_hilo(ntohl(reply.ddc_freq_hi),
 				 ntohl(reply.ddc_freq_lo)));
 
       result->residual_freq =
-        u2_fxpt_freq_to_double( 
-	 u2_fxpt_freq_from_hilo(ntohl(reply.residual_freq_hi), 
+        u2_fxpt_freq_to_double(
+	 u2_fxpt_freq_from_hilo(ntohl(reply.residual_freq_hi),
 				ntohl(reply.residual_freq_lo)));
 
       result->spectrum_inverted = (bool)(ntohx(reply.inverted) == 1);
@@ -557,7 +601,7 @@ namespace usrp2 {
 
     return success;
   }
-  
+
   bool
   usrp2::impl::set_rx_decim(int decimation_factor)
   {
@@ -567,9 +611,9 @@ namespace usrp2 {
     init_config_rx_v2_cmd(&cmd);
     cmd.op.valid = htons(CFGV_INTERP_DECIM);
     cmd.op.decim = htonl(decimation_factor);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -577,7 +621,7 @@ namespace usrp2 {
       d_rx_decim = decimation_factor;
     return success;
   }
-  
+
   bool
   usrp2::impl::set_rx_scale_iq(int scale_i, int scale_q)
   {
@@ -587,15 +631,15 @@ namespace usrp2 {
     init_config_rx_v2_cmd(&cmd);
     cmd.op.valid = htons(CFGV_SCALE_IQ);
     cmd.op.scale_iq = htonl(((scale_i & 0xffff) << 16) | (scale_q & 0xffff));
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
     return success;
   }
-  
+
   bool
   usrp2::impl::start_rx_streaming(unsigned int channel, unsigned int items_per_frame)
   {
@@ -612,16 +656,16 @@ namespace usrp2 {
     }
 
     {
-      omni_mutex_lock l(d_channel_rings_mutex);
+      gruel::scoped_lock l(d_channel_rings_mutex);
       if (d_channel_rings[channel]) {
 	std::cerr << "usrp2: channel " << channel
 		  << " already streaming" << std::endl;
 	return false;
       }
-      
+
       if (items_per_frame == 0)
 	items_per_frame = U2_MAX_SAMPLES;		// minimize overhead
-      
+
       op_start_rx_streaming_cmd cmd;
       op_generic_t reply;
 
@@ -633,19 +677,133 @@ namespace usrp2 {
       cmd.op.items_per_frame = htonl(items_per_frame);
       cmd.eop.opcode = OP_EOP;
       cmd.eop.len = sizeof(cmd.eop);
-    
+
+      d_dont_enqueue = false;
       bool success = false;
       pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-      success = transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT);
+      success = transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT);
       success = success && (ntohx(reply.ok) == 1);
-      
+
       if (success)
 	d_channel_rings[channel] = ring_sptr(new ring(d_eth_buf->max_frames()));
+      else
+	d_dont_enqueue = true;
+
+      //fprintf(stderr, "usrp2::start_rx_streaming: success = %d\n", success);
+      return success;
+    }
+  }
+
+  bool
+  usrp2::impl::start_rx_streaming_at(unsigned int channel, unsigned int items_per_frame, unsigned int time)
+  {
+    if (channel > MAX_CHAN) {
+      std::cerr << "usrp2: invalid channel number (" << channel
+		<< ")" << std::endl;
+      return false;
+    }
+
+    if (channel > 0) { // until firmware supports multiple streams
+      std::cerr << "usrp2: channel " << channel
+		<< " not implemented" << std::endl;
+      return false;
+    }
+
+    {
+      gruel::scoped_lock guard(d_channel_rings_mutex);
+      if (d_channel_rings[channel]) {
+	std::cerr << "usrp2: channel " << channel
+		  << " already streaming" << std::endl;
+	return false;
+      }
+
+      if (items_per_frame == 0)
+	items_per_frame = U2_MAX_SAMPLES;		// minimize overhead
+
+      op_start_rx_streaming_cmd cmd;
+      op_generic_t reply;
+
+      memset(&cmd, 0, sizeof(cmd));
+      init_etf_hdrs(&cmd.h, d_addr, 0, CONTROL_CHAN, time);
+      cmd.op.opcode = OP_START_RX_STREAMING;
+      cmd.op.len = sizeof(cmd.op);
+      cmd.op.rid = d_next_rid++;
+      cmd.op.items_per_frame = htonl(items_per_frame);
+      cmd.eop.opcode = OP_EOP;
+      cmd.eop.len = sizeof(cmd.eop);
+
+      d_dont_enqueue = false;
+      bool success = false;
+      pending_reply p(cmd.op.rid, &reply, sizeof(reply));
+      success = transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT);
+      success = success && (ntohx(reply.ok) == 1);
+
+      if (success)
+	d_channel_rings[channel] = ring_sptr(new ring(d_eth_buf->max_frames()));
+      else
+	d_dont_enqueue = true;
 
       return success;
     }
   }
-  
+
+  bool
+  usrp2::impl::sync_and_start_rx_streaming_at(unsigned int channel, unsigned int items_per_frame, unsigned int time)
+  {
+
+    if (channel > MAX_CHAN) {
+      std::cerr << "usrp2: invalid channel number (" << channel
+		<< ")" << std::endl;
+      return false;
+    }
+
+    if (channel > 0) { // until firmware supports multiple streams
+      std::cerr << "usrp2: channel " << channel
+		<< " not implemented" << std::endl;
+      return false;
+    }
+
+    {
+      gruel::scoped_lock guard(d_channel_rings_mutex);
+      if (d_channel_rings[channel]) {
+	std::cerr << "usrp2: channel " << channel
+		  << " already streaming" << std::endl;
+	return false;
+      }
+
+      if (items_per_frame == 0)
+	items_per_frame = U2_MAX_SAMPLES;		// minimize overhead
+
+      op_sync_and_start_rx_streaming_cmd cmd;
+      op_generic_t reply;
+
+      memset(&cmd, 0, sizeof(cmd));
+      init_etf_hdrs(&cmd.h, d_addr, 0, CONTROL_CHAN, time);
+      cmd.sync_op.opcode = OP_SYNC_TO_PPS;
+      cmd.sync_op.len = sizeof(cmd.sync_op);
+      cmd.sync_op.rid = d_next_rid++;
+      cmd.rx_op.opcode = OP_START_RX_STREAMING;
+      cmd.rx_op.len = sizeof(cmd.rx_op);
+      cmd.rx_op.rid = d_next_rid++;
+      cmd.rx_op.items_per_frame = htonl(items_per_frame);
+      cmd.eop.opcode = OP_EOP;
+      cmd.eop.len = sizeof(cmd.eop);
+
+      d_dont_enqueue = false;
+      bool success = false;
+      pending_reply p(cmd.sync_op.rid, &reply, sizeof(reply));
+      success = transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT);
+      success = success && (ntohx(reply.ok) == 1);
+
+      if (success)
+	d_channel_rings[channel] = ring_sptr(new ring(d_eth_buf->max_frames()));
+      else
+	d_dont_enqueue = true;
+
+      return success;
+    }
+  }
+
   bool
   usrp2::impl::stop_rx_streaming(unsigned int channel)
   {
@@ -661,11 +819,14 @@ namespace usrp2 {
       return false;
     }
 
+    d_dont_enqueue = true;	// no new samples
+    flush_rx_samples(channel);	// dump any we may already have
+
     op_stop_rx_cmd cmd;
     op_generic_t reply;
 
     {
-      omni_mutex_lock l(d_channel_rings_mutex);
+      gruel::scoped_lock l(d_channel_rings_mutex);
 
       memset(&cmd, 0, sizeof(cmd));
       init_etf_hdrs(&cmd.h, d_addr, 0, CONTROL_CHAN, -1);
@@ -674,12 +835,14 @@ namespace usrp2 {
       cmd.op.rid = d_next_rid++;
       cmd.eop.opcode = OP_EOP;
       cmd.eop.len = sizeof(cmd.eop);
-    
+
       bool success = false;
       pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-      success = transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT);
+      success = transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT);
       success = success && (ntohx(reply.ok) == 1);
       d_channel_rings[channel].reset();
+      d_rx_seqno = -1;
+      //fprintf(stderr, "usrp2::stop_rx_streaming:  success = %d\n", success);
       return success;
     }
   }
@@ -692,25 +855,25 @@ namespace usrp2 {
                 << " )" << std::endl;
       return false;
     }
-    
+
     if (channel > 0) {
       std::cerr << "usrp2: channel " << channel
                 << " not implemented" << std::endl;
       return false;
     }
-    
+
     ring_sptr rp = d_channel_rings[channel];
     if (!rp){
       std::cerr << "usrp2: channel " << channel
                 << " not receiving" << std::endl;
       return false;
     }
-    
+
     // Wait for frames available in channel ring
     DEBUG_LOG("W");
     rp->wait_for_not_empty();
     DEBUG_LOG("s");
-    
+
     // Iterate through frames and present to user
     void *p;
     size_t frame_len_in_bytes;
@@ -732,11 +895,62 @@ namespace usrp2 {
     return true;
   }
 
+  bool
+  usrp2::impl::flush_rx_samples(unsigned int channel)
+  {
+    if (channel > MAX_CHAN) {
+      std::cerr << "usrp2: invalid channel (" << channel
+                << " )" << std::endl;
+      return false;
+    }
+
+    if (channel > 0) {
+      std::cerr << "usrp2: channel " << channel
+                << " not implemented" << std::endl;
+      return false;
+    }
+
+    ring_sptr rp = d_channel_rings[channel];
+    if (!rp){
+      return false;
+    }
+
+    // Iterate through frames and drop them
+    void *p;
+    size_t frame_len_in_bytes;
+    while (rp->dequeue(&p, &frame_len_in_bytes)) {
+      d_eth_buf->release_frame(p);
+      dec_enqueued();
+    }
+    return true;
+  }
+
   // ----------------------------------------------------------------
   // 				Transmit
   // ----------------------------------------------------------------
 
-  bool 
+  bool
+  usrp2::impl::set_tx_antenna(int ant){
+    op_config_mimo_cmd cmd;
+    op_generic_t reply;
+
+    memset(&cmd, 0, sizeof(cmd));
+    init_etf_hdrs(&cmd.h, d_addr, 0, CONTROL_CHAN, -1);
+    cmd.op.opcode = OP_TX_ANTENNA;
+    cmd.op.len = sizeof(cmd.op);
+    cmd.op.rid = d_next_rid++;
+    cmd.op.flags = ant;
+    cmd.eop.opcode = OP_EOP;
+    cmd.eop.len = sizeof(cmd.eop);
+
+    pending_reply p(cmd.op.rid, &reply, sizeof(reply));
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+      return false;
+
+    return ntohx(reply.ok) == 1;
+  }
+
+  bool
   usrp2::impl::set_tx_gain(double gain)
   {
     op_config_tx_v2_cmd cmd;
@@ -745,15 +959,15 @@ namespace usrp2 {
     init_config_tx_v2_cmd(&cmd);
     cmd.op.valid = htons(CFGV_GAIN);
     cmd.op.gain = htons(u2_double_to_fxpt_gain(gain));
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
     return success;
   }
-  
+
   bool
   usrp2::impl::set_tx_lo_offset(double frequency)
   {
@@ -772,9 +986,9 @@ namespace usrp2 {
 
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -792,26 +1006,26 @@ namespace usrp2 {
     u2_fxpt_freq_t fxpt = u2_double_to_fxpt_freq(frequency);
     cmd.op.freq_hi = htonl(u2_fxpt_freq_hi(fxpt));
     cmd.op.freq_lo = htonl(u2_fxpt_freq_lo(fxpt));
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
     if (result && success) {
       result->baseband_freq =
-        u2_fxpt_freq_to_double( 
-	  u2_fxpt_freq_from_hilo(ntohl(reply.baseband_freq_hi), 
+        u2_fxpt_freq_to_double(
+	  u2_fxpt_freq_from_hilo(ntohl(reply.baseband_freq_hi),
 				 ntohl(reply.baseband_freq_lo)));
 
       result->dxc_freq =
-        u2_fxpt_freq_to_double( 
-	  u2_fxpt_freq_from_hilo(ntohl(reply.duc_freq_hi), 
+        u2_fxpt_freq_to_double(
+	  u2_fxpt_freq_from_hilo(ntohl(reply.duc_freq_hi),
 				 ntohl(reply.duc_freq_lo)));
 
       result->residual_freq =
-        u2_fxpt_freq_to_double( 
-	 u2_fxpt_freq_from_hilo(ntohl(reply.residual_freq_hi), 
+        u2_fxpt_freq_to_double(
+	 u2_fxpt_freq_from_hilo(ntohl(reply.residual_freq_hi),
 				ntohl(reply.residual_freq_lo)));
 
       result->spectrum_inverted = (bool)(ntohx(reply.inverted) == 1);
@@ -819,7 +1033,7 @@ namespace usrp2 {
 
     return success;
   }
-  
+
   bool
   usrp2::impl::set_tx_interp(int interpolation_factor)
   {
@@ -829,9 +1043,9 @@ namespace usrp2 {
     init_config_tx_v2_cmd(&cmd);
     cmd.op.valid = htons(CFGV_INTERP_DECIM);
     cmd.op.interp = htonl(interpolation_factor);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -846,7 +1060,7 @@ namespace usrp2 {
 
     return success;
   }
-  
+
   void
   usrp2::impl::default_tx_scale_iq(int interpolation_factor, int *scale_i, int *scale_q)
   {
@@ -859,7 +1073,7 @@ namespace usrp2 {
 
     // Calculate dsp_core_tx gain absent scale multipliers
     float gain = (1.65*i*i*i)/(4096*pow(2, ceil(log2(i*i*i))));
-    
+
     // Calculate closest multiplier constant to reverse gain
     int scale = (int)rint(1.0/gain);
     // fprintf(stderr, "if=%i i=%i gain=%f scale=%i\n", interpolation_factor, i, gain, scale);
@@ -880,9 +1094,9 @@ namespace usrp2 {
     init_config_tx_v2_cmd(&cmd);
     cmd.op.valid = htons(CFGV_SCALE_IQ);
     cmd.op.scale_iq = htonl(((scale_i & 0xffff) << 16) | (scale_q & 0xffff));
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -1008,9 +1222,9 @@ namespace usrp2 {
     cmd.op.flags = flags;
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     return ntohx(reply.ok) == 1;
@@ -1069,7 +1283,7 @@ namespace usrp2 {
       return false;
 
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, 4*DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, 4*DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -1082,10 +1296,10 @@ namespace usrp2 {
     dst->dbid = ntohl(src->dbid);
 
     dst->freq_min =
-      u2_fxpt_freq_to_double(u2_fxpt_freq_from_hilo(ntohl(src->freq_min_hi), 
+      u2_fxpt_freq_to_double(u2_fxpt_freq_from_hilo(ntohl(src->freq_min_hi),
 						    ntohl(src->freq_min_lo)));
     dst->freq_max =
-      u2_fxpt_freq_to_double(u2_fxpt_freq_from_hilo(ntohl(src->freq_max_hi), 
+      u2_fxpt_freq_to_double(u2_fxpt_freq_from_hilo(ntohl(src->freq_max_hi),
 						    ntohl(src->freq_max_lo)));
 
     dst->gain_min = u2_fxpt_gain_to_double(ntohs(src->gain_min));
@@ -1106,9 +1320,9 @@ namespace usrp2 {
     cmd.op.rid = d_next_rid++;
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -1133,9 +1347,9 @@ namespace usrp2 {
     cmd.op.rid = d_next_rid++;
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     return ntohx(reply.ok) == 1;
@@ -1155,9 +1369,9 @@ namespace usrp2 {
     cmd.op.ok = enable ? 1 : 0;
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     return ntohx(reply.ok) == 1;
@@ -1170,7 +1384,7 @@ namespace usrp2 {
     // fprintf(stderr, "usrp2::peek: addr=%08X words=%u\n", addr, words);
 
     if (addr % 4 != 0) {
-      fprintf(stderr, "usrp2::peek: addr (=%08X) must be 32-bit word aligned\n", addr); 
+      fprintf(stderr, "usrp2::peek: addr (=%08X) must be 32-bit word aligned\n", addr);
       return result;
     }
 
@@ -1197,7 +1411,7 @@ namespace usrp2 {
 
     reply = (op_generic_t *)malloc(rlen+bytes);
     pending_reply p(cmd.op.rid, reply, rlen+bytes);
-    if (transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT)) {
+    if (transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT)) {
       uint32_t nwords = (reply->len-rlen)/sizeof(uint32_t);
       uint32_t *data = (uint32_t *)(reply+rlen/wlen);
       for (unsigned int i = 0; i < nwords; i++)
@@ -1212,7 +1426,7 @@ namespace usrp2 {
   usrp2::impl::poke32(uint32_t addr, const std::vector<uint32_t> &data)
   {
     if (addr % 4 != 0) {
-      fprintf(stderr, "usrp2::poke32: addr (=%08X) must be 32-bit word aligned\n", addr); 
+      fprintf(stderr, "usrp2::poke32: addr (=%08X) must be 32-bit word aligned\n", addr);
       return false;
     }
 
@@ -1264,7 +1478,7 @@ namespace usrp2 {
     bool ok = false;
     op_generic_t reply;
     pending_reply p(cmd->op.rid, &reply, sizeof(reply));
-    if (transmit_cmd(cmd, l, &p, DEF_CMD_TIMEOUT))
+    if (transmit_cmd_and_wait(cmd, l, &p, DEF_CMD_TIMEOUT))
       ok = (ntohx(reply.ok) == 1);
 
     free(cmd);
@@ -1284,9 +1498,9 @@ namespace usrp2 {
     cmd.op.rid = d_next_rid++;
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -1313,9 +1527,9 @@ namespace usrp2 {
     cmd.op.mask = htons(mask);
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -1346,9 +1560,9 @@ namespace usrp2 {
     memcpy(&cmd.op.sels, sels.c_str(), 16);
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -1375,9 +1589,9 @@ namespace usrp2 {
     cmd.op.mask = htons(mask);
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -1404,9 +1618,9 @@ namespace usrp2 {
     cmd.op.mask = 0;  // not used
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);
@@ -1441,9 +1655,9 @@ namespace usrp2 {
     cmd.op.mask = 0;  // not used
     cmd.eop.opcode = OP_EOP;
     cmd.eop.len = sizeof(cmd.eop);
-    
+
     pending_reply p(cmd.op.rid, &reply, sizeof(reply));
-    if (!transmit_cmd(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
+    if (!transmit_cmd_and_wait(&cmd, sizeof(cmd), &p, DEF_CMD_TIMEOUT))
       return false;
 
     bool success = (ntohx(reply.ok) == 1);

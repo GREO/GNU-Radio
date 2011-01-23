@@ -1,5 +1,5 @@
 #
-# Copyright 2001,2004 Free Software Foundation, Inc.
+# Copyright 2001,2004,2009,2010 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -24,14 +24,20 @@ include $(top_srcdir)/Makefile.common
 ## Process this file with automake to produce Makefile.in
 
 # We've got to build . before swig
-SUBDIRS = missing runtime filter viterbi general gengen g72x reed-solomon io hier . swig
+SUBDIRS = missing runtime filter viterbi general gengen g72x reed-solomon io hier .
+if PYTHON
+SUBDIRS += swig
+endif
+
+AM_CPPFLAGS = $(STD_DEFINES_AND_INCLUDES) $(CPPUNIT_INCLUDES) $(WITH_INCLUDES)
 
 # generate libgnuradio-core.la from the convenience libraries in subdirs
 
-lib_LTLIBRARIES = libgnuradio-core.la libgnuradio-core-qa.la
+lib_LTLIBRARIES = libgnuradio-core.la
+noinst_LTLIBRARIES = libgnuradio-core-qa.la
 
 libgnuradio_core_la_SOURCES = bug_work_around_6.cc
-libgnuradio_core_la_LDFLAGS = $(NO_UNDEFINED) -version-info 0:0:0
+libgnuradio_core_la_LDFLAGS = $(NO_UNDEFINED) $(LTVERSIONFLAGS)
 
 libgnuradio_core_qa_la_SOURCES = bug_work_around_6.cc
 libgnuradio_core_qa_la_LDFLAGS = $(NO_UNDEFINED) -version-info 0:0:0 \
@@ -49,7 +55,6 @@ libgnuradio_core_la_LIBADD  = 		\
 	reed-solomon/librs.la		\
 	runtime/libruntime.la		\
 	hier/libhier.la			\
-	$(OMNITHREAD_LA)		\
 	$(GRUEL_LA)			\
 	$(FFTW3F_LIBS)			\
 	$(GSL_LIBS)			\
@@ -61,3 +66,7 @@ libgnuradio_core_qa_la_LIBADD  = 	\
 	runtime/libruntime-qa.la	\
 	libgnuradio-core.la		\
 	$(CPPUNIT_LIBS)			
+
+bin_PROGRAMS = gnuradio-config-info
+gnuradio_config_info_SOURCES = gnuradio-config-info.cc
+gnuradio_config_info_LDADD = libgnuradio-core.la $(BOOST_LDFLAGS) $(BOOST_PROGRAM_OPTIONS_LIB)

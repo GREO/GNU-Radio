@@ -1,5 +1,5 @@
 #
-# Copyright 2005,2006,2007 Free Software Foundation, Inc.
+# Copyright 2005,2006,2007,2009 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -255,8 +255,8 @@ class dqpsk_demod(gr.hier_block2):
         self._mm_omega = self._samples_per_symbol
         self._mm_gain_omega = .25 * self._mm_gain_mu * self._mm_gain_mu
         self._costas_beta  = 0.25 * self._costas_alpha * self._costas_alpha
-        fmin = -0.025
-        fmax = 0.025
+        fmin = -0.25
+        fmax = 0.25
         
         self.receiver=gr.mpsk_receiver_cc(arity, pi/4.0,
                                           self._costas_alpha, self._costas_beta,
@@ -264,7 +264,7 @@ class dqpsk_demod(gr.hier_block2):
                                           self._mm_mu, self._mm_gain_mu,
                                           self._mm_omega, self._mm_gain_omega,
                                           self._mm_omega_relative_limit)
-
+        
         # Perform Differential decoding on the constellation
         self.diffdec = gr.diff_phasor_cc()
         

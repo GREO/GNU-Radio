@@ -1,5 +1,5 @@
 #
-# Copyright 2008 Free Software Foundation, Inc.
+# Copyright 2008,2009 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -28,7 +28,16 @@ gruelincludedir = $(prefix)/include/gruel
 
 gruelinclude_HEADERS = \
 	$(BUILT_SOURCES) \
+	msg_accepter.h \
+	msg_accepter_msgq.h \
+	msg_queue.h \
+	msg_passing.h \
+	pmt.h \
+	pmt_pool.h \
+	pmt_serial_tags.h \
+	pmt_sugar.h \
 	realtime.h \
 	sys_pri.h \
 	thread_body_wrapper.h \
-	thread_group.h
+	thread_group.h \
+	thread.h

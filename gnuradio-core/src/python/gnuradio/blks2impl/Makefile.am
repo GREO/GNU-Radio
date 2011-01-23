@@ -1,5 +1,5 @@
 #
-# Copyright 2005,2007,2009 Free Software Foundation, Inc.
+# Copyright 2005,2007,2009,2010 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -31,11 +31,14 @@ grblkspython_PYTHON =		\
 	am_demod.py		\
 	channel_model.py	\
 	dbpsk.py		\
+	dbpsk2.py		\
 	dqpsk.py		\
+	dqpsk2.py		\
 	d8psk.py		\
 	filterbank.py		\
 	fm_demod.py		\
 	fm_emph.py		\
+	generic_usrp.py	\
 	gmsk.py			\
 	cpm.py			\
 	logpwrfft.py		\
@@ -47,6 +50,10 @@ grblkspython_PYTHON =		\
 	ofdm_sync_pn.py		\
 	ofdm_sync_pnac.py	\
 	ofdm_sync_ml.py		\
+	pfb_arb_resampler.py	\
+	pfb_channelizer.py	\
+	pfb_decimator.py	\
+	pfb_interpolator.py	\
 	pkt.py			\
 	psk.py			\
 	qam.py			\

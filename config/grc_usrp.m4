@@ -22,8 +22,8 @@ AC_DEFUN([GRC_USRP],[
 
     GRC_WITH(usrp)
 
-    dnl Don't do usrp if omnithread skipped
-    GRC_CHECK_DEPENDENCY(usrp, omnithread)
+    dnl Don't do usrp if gruel is skipped
+    GRC_CHECK_DEPENDENCY(usrp, gruel)
 
     dnl Make sure the fast usb technique is set, OS dependent.
     dnl This is always performed, since it puts out CLI flags.
@@ -44,32 +44,20 @@ AC_DEFUN([GRC_USRP],[
         AC_CHECK_FUNCS([getrusage sched_setscheduler pthread_setschedparam])
         AC_CHECK_FUNCS([sigaction snprintf])
 
-	dnl Make sure libusb is installed; required for legacy USB
-        USRP_LIBUSB([],[passed=no;AC_MSG_RESULT([Unable to find dependency libusb.])])
+	dnl Make sure libusb version is installed; required for legacy USB
+        USRP_LIBUSB([$req_libusb1],[],[passed=no;AC_MSG_RESULT([Unable to find dependency libusb.])])
 
 	dnl Make sure SDCC >= 2.4.0 is available.
         USRP_SDCC([2.4.0],[],[passed=no;AC_MSG_RESULT([Unable to find firmware compiler SDCC.])])
     fi
     if test $passed != with; then
 	dnl how and where to find INCLUDES and LA
-	usrp_INCLUDES="-I\${abs_top_srcdir}/usrp/host/lib/legacy \
-		-I\${abs_top_srcdir}/usrp/firmware/include \
-		-I\${abs_top_builddir}/usrp/host/lib/legacy"
-        usrp_LA="\${abs_top_builddir}/usrp/host/lib/legacy/libusrp.la"
+	usrp_INCLUDES=" \
+		-I\${abs_top_srcdir}/usrp/host/include \
+		-I\${abs_top_builddir}/usrp/host/include \
+		-I\${abs_top_srcdir}/usrp/firmware/include"
+        usrp_LA="\${abs_top_builddir}/usrp/host/lib/libusrp.la"
     fi
-
-    dnl There are 2 pkg-config files (usrp, and usrp-inband); the one
-    dnl for usrp requires omnithread for Darwin only.  Create a variable
-    dnl for just the usrp.pc.in case.
-    case "$host_os" in
-      darwin*)
-        usrp_darwin_omnithread_pc_requires="gnuradio-omnithread"
-        ;;
-      *) dnl (blanks)
-        usrp_darwin_omnithread_pc_requires=""
-        ;;
-    esac
-    AC_SUBST(usrp_darwin_omnithread_pc_requires)
 
     AC_CONFIG_FILES([ \
 	usrp/Makefile \
@@ -79,10 +67,11 @@ AC_DEFUN([GRC_USRP],[
         usrp/doc/Makefile \
         usrp/doc/other/Makefile \
         usrp/host/Makefile \
+	usrp/host/include/Makefile \
+	usrp/host/include/usrp/Makefile \
         usrp/host/misc/Makefile \
         usrp/host/lib/Makefile \
-        usrp/host/lib/legacy/Makefile \
-        usrp/host/lib/legacy/std_paths.h \
+        usrp/host/lib/std_paths.h \
         usrp/host/swig/Makefile \
         usrp/host/apps/Makefile \
         usrp/firmware/Makefile \

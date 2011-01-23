@@ -20,7 +20,7 @@
 # 
 
 from gnuradio import gr
-import usrp_options
+from gnuradio import usrp_options
 import receive_path
 from pick_bitrate import pick_rx_bitrate
 from gnuradio import eng_notation
@@ -59,26 +59,36 @@ class usrp_receive_path(gr.hier_block2):
         if options.rx_freq is None:
             sys.stderr.write("-f FREQ or --freq FREQ or --rx-freq FREQ must be specified\n")
             raise SystemExit
+
+        #setup usrp
+        self._demod_class = demod_class
+        self._setup_usrp_source(options)
+
         rx_path = receive_path.receive_path(demod_class, rx_callback, options)
         for attr in dir(rx_path): #forward the methods
             if not attr.startswith('_') and not hasattr(self, attr):
                 setattr(self, attr, getattr(rx_path, attr))
-        #setup usrp
-        self._demod_class = demod_class
-        self._setup_usrp_source(options)
+
         #connect
         self.connect(self.u, rx_path)
 
     def _setup_usrp_source(self, options):
         self.u = usrp_options.create_usrp_source(options)
         adc_rate = self.u.adc_rate()
-        if options.verbose:
-            print 'USRP Source:', self.u
+        self.rs_rate = options.bitrate
+
         (self._bitrate, self._samples_per_symbol, self._decim) = \
                         pick_rx_bitrate(options.bitrate, self._demod_class.bits_per_symbol(), \
-                                        options.samples_per_symbol, options.decim, adc_rate,  \
-                                        self.u.get_decim_rates())
+                                        options.samples_per_symbol, options.decim,
+                                        adc_rate, self.u.get_decim_rates())
 
+        if options.verbose:
+            print 'USRP Source:', self.u
+            print 'Decimation: ', self._decim
+
+        options.samples_per_symbol = self._samples_per_symbol
+        options.decim = self._decim
+        
         self.u.set_decim(self._decim)
 
         if not self.u.set_center_freq(options.rx_freq):

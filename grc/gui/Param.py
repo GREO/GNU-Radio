@@ -1,5 +1,5 @@
 """
-Copyright 2007, 2008, 2009 Free Software Foundation, Inc.
+Copyright 2007, 2008, 2009, 2010 Free Software Foundation, Inc.
 This file is part of GNU Radio
 
 GNU Radio Companion is free software; you can redistribute it and/or
@@ -23,6 +23,108 @@ import pygtk
 pygtk.require('2.0')
 import gtk
 
+class InputParam(gtk.HBox):
+	"""The base class for an input parameter inside the input parameters dialog."""
+
+	def __init__(self, param, callback=None):
+		gtk.HBox.__init__(self)
+		self.param = param
+		self._callback = callback
+		self.label = gtk.Label() #no label, markup is added by set_markup
+		self.label.set_size_request(150, -1)
+		self.pack_start(self.label, False)
+		self.set_markup = lambda m: self.label.set_markup(m)
+		self.tp = None
+		#connect events
+		self.connect('show', self._update_gui)
+	def set_color(self, color): pass
+	def set_tooltip_text(self, text): pass
+
+	def _update_gui(self, *args):
+		"""
+		Set the markup, color, tooltip, show/hide.
+		"""
+		#set the markup
+		has_cb = \
+			hasattr(self.param.get_parent(), 'get_callbacks') and \
+			filter(lambda c: self.param.get_key() in c, self.param.get_parent()._callbacks)
+		self.set_markup(Utils.parse_template(PARAM_LABEL_MARKUP_TMPL, param=self.param, has_cb=has_cb))
+		#set the color
+		self.set_color(self.param.get_color())
+		#set the tooltip
+		self.set_tooltip_text(
+			Utils.parse_template(TIP_MARKUP_TMPL, param=self.param).strip(),
+		)
+		#show/hide
+		if self.param.get_hide() == 'all': self.hide_all()
+		else: self.show_all()
+
+	def _handle_changed(self, *args):
+		"""
+		Handle a gui change by setting the new param value,
+		calling the callback (if applicable), and updating.
+		"""
+		#set the new value
+		self.param.set_value(self.get_text())
+		#call the callback
+		if self._callback: self._callback(*args)
+		else: self.param.validate()
+		#gui update
+		self._update_gui()
+
+class EntryParam(InputParam):
+	"""Provide an entry box for strings and numbers."""
+
+	def __init__(self, *args, **kwargs):
+		InputParam.__init__(self, *args, **kwargs)
+		self._input = gtk.Entry()
+		self._input.set_text(self.param.get_value())
+		self._input.connect('changed', self._handle_changed)
+		self.pack_start(self._input, True)
+	def get_text(self): return self._input.get_text()
+	def set_color(self, color): self._input.modify_base(gtk.STATE_NORMAL, gtk.gdk.color_parse(color))
+	def set_tooltip_text(self, text): self._input.set_tooltip_text(text)
+
+class EnumParam(InputParam):
+	"""Provide an entry box for Enum types with a drop down menu."""
+
+	def __init__(self, *args, **kwargs):
+		InputParam.__init__(self, *args, **kwargs)
+		self._input = gtk.combo_box_new_text()
+		for option in self.param.get_options(): self._input.append_text(option.get_name())
+		self._input.set_active(self.param.get_option_keys().index(self.param.get_value()))
+		self._input.connect('changed', self._handle_changed)
+		self.pack_start(self._input, False)
+	def get_text(self): return self.param.get_option_keys()[self._input.get_active()]
+	def set_tooltip_text(self, text): self._input.set_tooltip_text(text)
+
+class EnumEntryParam(InputParam):
+	"""Provide an entry box and drop down menu for Raw Enum types."""
+
+	def __init__(self, *args, **kwargs):
+		InputParam.__init__(self, *args, **kwargs)
+		self._input = gtk.combo_box_entry_new_text()
+		for option in self.param.get_options(): self._input.append_text(option.get_name())
+		try: self._input.set_active(self.param.get_option_keys().index(self.param.get_value()))
+		except:
+			self._input.set_active(-1)
+			self._input.get_child().set_text(self.param.get_value())
+		self._input.connect('changed', self._handle_changed)
+		self._input.get_child().connect('changed', self._handle_changed)
+		self.pack_start(self._input, False)
+	def get_text(self):
+		if self._input.get_active() == -1: return self._input.get_child().get_text()
+		return self.param.get_option_keys()[self._input.get_active()]
+	def set_tooltip_text(self, text):
+		if self._input.get_active() == -1: #custom entry
+			self._input.get_child().set_tooltip_text(text)
+		else: self._input.set_tooltip_text(text)
+	def set_color(self, color):
+		if self._input.get_active() == -1: #custom entry, use color
+			self._input.get_child().modify_base(gtk.STATE_NORMAL, gtk.gdk.color_parse(color))
+		else: #from enum, make white background
+			self._input.get_child().modify_base(gtk.STATE_NORMAL, gtk.gdk.color_parse('#ffffff'))
+
 PARAM_MARKUP_TMPL="""\
 #set $foreground = $param.is_valid() and 'black' or 'red'
 <span foreground="$foreground" font_desc="Sans 7.5"><b>$encode($param.get_name()): </b>$encode(repr($param))</span>"""
@@ -33,10 +135,21 @@ PARAM_LABEL_MARKUP_TMPL="""\
 <span underline="$underline" foreground="$foreground" font_desc="Sans 9">$encode($param.get_name())</span>"""
 
 TIP_MARKUP_TMPL="""\
+########################################
+#def truncate(string)
+	#set $max_len = 100
+	#set $string = str($string)
+	#if len($string) > $max_len
+$('%s...%s'%($string[:$max_len/2], $string[-$max_len/2:]))#slurp
+	#else
+$string#slurp
+	#end if
+#end def
+########################################
 Key: $param.get_key()
 Type: $param.get_type()
 #if $param.is_valid()
-Value: $param.get_evaluated()
+Value: $truncate($param.get_evaluated())
 #elif len($param.get_error_messages()) == 1
 Error: $(param.get_error_messages()[0])
 #else
@@ -49,55 +162,23 @@ Error:
 class Param(Element):
 	"""The graphical parameter."""
 
-	def update(self):
-		"""
-		Called when an external change occurs.
-		Update the graphical input by calling the change handler.
-		"""
-		if hasattr(self, '_input'): self._handle_changed()
+	def __init__(self): Element.__init__(self)
 
-	def get_input_object(self, callback=None):
+	def get_input(self, *args, **kwargs):
 		"""
-		Get the graphical gtk object to represent this parameter.
-		Create the input object with this data type and the handle changed method.
-		@param callback a function of one argument(this param) to be called from the change handler
-		@return gtk input object
+		Get the graphical gtk class to represent this parameter.
+		An enum requires and combo parameter.
+		A non-enum with options gets a combined entry/combo parameter.
+		All others get a standard entry parameter.
+		@return gtk input class
 		"""
-		self._callback = callback
-		self._input = self.get_input_class()(self, self._handle_changed)
-		if not self._callback: self.update()
-		return self._input
+		if self.is_enum(): return EnumParam(self, *args, **kwargs)
+		if self.get_options(): return EnumEntryParam(self, *args, **kwargs)
+		return EntryParam(self, *args, **kwargs)
 
-	def _handle_changed(self, widget=None):
+	def get_markup(self):
 		"""
-		When the input changes, write the inputs to the data type.
-		Finish by calling the exteral callback.
+		Get the markup for this param.
+		@return a pango markup string
 		"""
-		self.set_value(self._input.get_text())
-		self.validate()
-		#is param is involved in a callback? #FIXME: messy
-		has_cb = \
-			hasattr(self.get_parent(), 'get_callbacks') and \
-			filter(lambda c: self.get_key() in c, self.get_parent()._callbacks)
-		self._input.set_markup(Utils.parse_template(PARAM_LABEL_MARKUP_TMPL, param=self, has_cb=has_cb))
-		#hide/show
-		if self.get_hide() == 'all': self._input.hide_all()
-		else: self._input.show_all()
-		#set the color
-		self._input.set_color(self.get_color())
-		#set the tooltip
-		if self._input.tp: self._input.tp.set_tip(
-			self._input.entry,
-			Utils.parse_template(TIP_MARKUP_TMPL, param=self).strip(),
-		)
-		#execute the external callback
-		if self._callback: self._callback(self)
-
-	def get_layout(self):
-		"""
-		Create a layout based on the current markup.
-		@return the pango layout
-		"""
-		layout = gtk.DrawingArea().create_pango_layout('')
-		layout.set_markup(Utils.parse_template(PARAM_MARKUP_TMPL, param=self))
-		return layout
+		return Utils.parse_template(PARAM_MARKUP_TMPL, param=self)

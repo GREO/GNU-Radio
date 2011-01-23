@@ -176,7 +176,7 @@ class _slider_base(_form_base):
 		self._add_widget(self._slider, label, flag=wx.EXPAND)
 
 	def _handle(self, event): self[INT_KEY] = self._slider.GetValue()
-	def _update(self, value): self._slider.SetValue(value)
+	def _update(self, value): self._slider.SetValue(int(round(value)))
 
 ########################################################################
 # Static Text Form
@@ -194,15 +194,19 @@ class static_text(_form_base):
 	@param label title label for this widget (optional)
 	@param width the width of the form in px
 	@param bold true to bold-ify the text (default=False)
+	@param units a suffix to add after the text
 	@param converter forms.str_converter(), int_converter(), float_converter()...
 	"""
-	def __init__(self, label='', width=-1, bold=False, converter=converters.str_converter(), **kwargs):
+	def __init__(self, label='', width=-1, bold=False, units='', converter=converters.str_converter(), **kwargs):
+		self._units = units
 		_form_base.__init__(self, converter=converter, **kwargs)
 		self._static_text = wx.StaticText(self._parent, size=wx.Size(width, -1))
 		if bold: make_bold(self._static_text)
 		self._add_widget(self._static_text, label)
 
-	def _update(self, label): self._static_text.SetLabel(label); self._parent.Layout()
+	def _update(self, label):
+			if self._units: label += ' ' + self._units
+			self._static_text.SetLabel(label); self._parent.Layout()
 
 ########################################################################
 # Text Box Form
@@ -224,11 +228,18 @@ class text_box(_form_base):
 	def __init__(self, label='', width=-1, converter=converters.eval_converter(), **kwargs):
 		_form_base.__init__(self, converter=converter, **kwargs)
 		self._text_box = wx.TextCtrl(self._parent, size=wx.Size(width, -1), style=wx.TE_PROCESS_ENTER)
+		self._default_bg_colour = self._text_box.GetBackgroundColour()
 		self._text_box.Bind(wx.EVT_TEXT_ENTER, self._handle)
+		self._text_box.Bind(wx.EVT_TEXT, self._update_color)
 		self._add_widget(self._text_box, label)
 
+	def _update_color(self, *args):
+		if self._text_box.GetValue() == self[INT_KEY]:
+			self._text_box.SetBackgroundColour(self._default_bg_colour)
+		else: self._text_box.SetBackgroundColour('#EEDDDD')
+
 	def _handle(self, event): self[INT_KEY] = self._text_box.GetValue()
-	def _update(self, value): self._text_box.SetValue(value)
+	def _update(self, value): self._text_box.SetValue(value); self._update_color()
 
 ########################################################################
 # Slider Form

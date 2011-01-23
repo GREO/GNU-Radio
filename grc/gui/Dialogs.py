@@ -20,7 +20,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 import pygtk
 pygtk.require('2.0')
 import gtk
-import Preferences
 import Utils
 
 class TextDisplay(gtk.TextView):
@@ -56,6 +55,20 @@ def MessageDialogHelper(type, buttons, title=None, markup=None):
 	response = message_dialog.run()
 	message_dialog.destroy()
 	return response
+
+
+ERRORS_MARKUP_TMPL="""\
+#for $i, $err_msg in enumerate($errors)
+<b>Error $i:</b>
+$encode($err_msg.replace('\t', '  '))
+
+#end for"""
+def ErrorsDialog(flowgraph): MessageDialogHelper(
+	type=gtk.MESSAGE_ERROR,
+	buttons=gtk.BUTTONS_CLOSE,
+	title='Flow Graph Errors',
+	markup=Utils.parse_template(ERRORS_MARKUP_TMPL, errors=flowgraph.get_error_messages()),
+)
 
 class AboutDialog(gtk.AboutDialog):
 	"""A cute little about dialog."""
@@ -98,8 +111,8 @@ COLORS_DIALOG_MARKUP_TMPL = """\
 #end if
 """
 
-def ColorsDialog(platform): MessageDialogHelper(
+def TypesDialog(platform): MessageDialogHelper(
 	type=gtk.MESSAGE_INFO,
 	buttons=gtk.BUTTONS_CLOSE,
-	title='Colors',
+	title='Types',
 	markup=Utils.parse_template(COLORS_DIALOG_MARKUP_TMPL, colors=platform.get_colors()))

@@ -24,9 +24,7 @@ include $(top_srcdir)/Makefile.common
 # For compiling within the GNU Radio build tree
 AM_CPPFLAGS=$(STD_DEFINES_AND_INCLUDES) \
 	 -I$(top_srcdir)/gr-usrp/src \
-	 -I$(top_srcdir)/usrp/host/lib/legacy \
-	 -I\${abs_top_builddir}/usrp/host/lib/legacy \
-	 -I$(top_srcdir)/usrp/firmware/include \
+	 $(USRP_INCLUDES) \
 	 $(WITH_INCLUDES)
 
 GR_USRP_LA=$(top_builddir)/gr-usrp/src/libgnuradio-usrp.la

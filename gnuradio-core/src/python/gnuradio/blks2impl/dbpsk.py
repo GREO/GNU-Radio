@@ -1,5 +1,5 @@
 #
-# Copyright 2005,2006,2007 Free Software Foundation, Inc.
+# Copyright 2005,2006,2007,2009 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -233,10 +233,10 @@ class dbpsk_demod(gr.hier_block2):
         arity = pow(2,self.bits_per_symbol())
 
         # Automatic gain control
-        scale = (1.0/16384.0)
-        self.pre_scaler = gr.multiply_const_cc(scale)   # scale the signal from full-range to +-1
-        #self.agc = gr.agc2_cc(0.6e-1, 1e-3, 1, 1, 100)
-        self.agc = gr.feedforward_agc_cc(16, 2.0)
+        #scale = (1.0/16384.0)
+        #self.pre_scaler = gr.multiply_const_cc(scale)   # scale the signal from full-range to +-1
+        self.agc = gr.agc2_cc(0.6e-1, 1e-3, 1, 1, 100)
+        #self.agc = gr.feedforward_agc_cc(16, 2.0)
 
         # RRC data filter
         ntaps = 11 * samples_per_symbol
@@ -251,20 +251,20 @@ class dbpsk_demod(gr.hier_block2):
         # symbol clock recovery
         if not self._mm_gain_mu:
             self._mm_gain_mu = 0.1
-            
+
         self._mm_omega = self._samples_per_symbol
         self._mm_gain_omega = .25 * self._mm_gain_mu * self._mm_gain_mu
         self._costas_beta  = 0.25 * self._costas_alpha * self._costas_alpha
-        fmin = -0.1
-        fmax = 0.1
+        fmin = -0.25
+        fmax = 0.25
         
         self.receiver=gr.mpsk_receiver_cc(arity, 0,
-                                         self._costas_alpha, self._costas_beta,
-                                         fmin, fmax,
-                                         self._mm_mu, self._mm_gain_mu,
-                                         self._mm_omega, self._mm_gain_omega,
-                                         self._mm_omega_relative_limit)
-
+                                          self._costas_alpha, self._costas_beta,
+                                          fmin, fmax,
+                                          self._mm_mu, self._mm_gain_mu,
+                                          self._mm_omega, self._mm_gain_omega,
+                                          self._mm_omega_relative_limit)
+            
         # Do differential decoding based on phase change of symbols
         self.diffdec = gr.diff_phasor_cc()
 
@@ -288,7 +288,7 @@ class dbpsk_demod(gr.hier_block2):
             self._setup_logging()
 
         # Connect and Initialize base class
-        self.connect(self, self.pre_scaler, self.agc, self.rrc_filter, self.receiver,
+        self.connect(self, self.agc, self.rrc_filter, self.receiver,
                      self.diffdec, self.slicer, self.symbol_mapper, self.unpack, self)
 
     def samples_per_symbol(self):

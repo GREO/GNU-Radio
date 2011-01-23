@@ -26,10 +26,12 @@ EXTRA_DIST = \
     README \
     README.gl
 
+if PYTHON
 SUBDIRS = src
 
-etcdir = $(gr_sysconfdir)
+etcdir = $(gr_prefsdir)
 dist_etc_DATA = gr-wxgui.conf
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = gr-wxgui.pc
+endif

@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 /*
- * Copyright 2004,2008 Free Software Foundation, Inc.
+ * Copyright 2004,2008,2009 Free Software Foundation, Inc.
  * 
  * This file is part of GNU Radio
  * 
@@ -68,7 +68,7 @@ min_available_space (gr_block_detail *d, int output_multiple)
   int	min_space = std::numeric_limits<int>::max();
 
   for (int i = 0; i < d->noutputs (); i++){
-    gr_buffer::scoped_lock guard(*d->output(i)->mutex());
+    gruel::scoped_lock guard(*d->output(i)->mutex());
 #if 0
     int n = round_down(d->output(i)->space_available(), output_multiple);
 #else
@@ -163,7 +163,7 @@ gr_block_executor::run_one_iteration()
 	/*
 	 * Acquire the mutex and grab local copies of items_available and done.
 	 */
-	gr_buffer::scoped_lock guard(*d->input(i)->mutex());
+	gruel::scoped_lock guard(*d->input(i)->mutex());
 	d_ninput_items[i] = d->input(i)->items_available();
 	d_input_done[i] = d->input(i)->done();
       }
@@ -205,7 +205,7 @@ gr_block_executor::run_one_iteration()
 	/*
 	 * Acquire the mutex and grab local copies of items_available and done.
 	 */
-	gr_buffer::scoped_lock guard(*d->input(i)->mutex());
+	gruel::scoped_lock guard(*d->input(i)->mutex());
 	d_ninput_items[i] = d->input(i)->items_available ();
 	d_input_done[i] = d->input(i)->done();
       }
@@ -290,6 +290,7 @@ gr_block_executor::run_one_iteration()
 
   setup_call_to_work:
 
+    d->d_produce_or = 0;
     for (int i = 0; i < d->noutputs (); i++)
       d_output_items[i] = d->output(i)->write_pointer();
 
@@ -299,11 +300,13 @@ gr_block_executor::run_one_iteration()
     LOG(*d_log << "  general_work: noutput_items = " << noutput_items
 	<< " result = " << n << std::endl);
 
-    if (n == -1)		// block is done
+    if (n == gr_block::WORK_DONE)
       goto were_done;
 
-    d->produce_each (n);	// advance write pointers
-    if (n > 0)
+    if (n != gr_block::WORK_CALLED_PRODUCE)
+      d->produce_each (n);	// advance write pointers
+    
+    if (d->d_produce_or > 0)	// block produced something
       return READY;
 
     // We didn't produce any output even though we called general_work.
@@ -312,7 +315,7 @@ gr_block_executor::run_one_iteration()
     // If this is a source, it's broken.
     if (d->source_p()){
       std::cerr << "gr_block_executor: source " << m
-		<< " returned 0 from work.  We're marking it DONE.\n";
+		<< " produced no output.  We're marking it DONE.\n";
       // FIXME maybe we ought to raise an exception...
       goto were_done;
     }

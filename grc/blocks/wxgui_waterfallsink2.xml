@@ -7,19 +7,27 @@
 <block>
 	<name>Waterfall Sink</name>
 	<key>wxgui_waterfallsink2</key>
+	<import>from gnuradio import window</import>
 	<import>from gnuradio.wxgui import waterfallsink2</import>
 	<make>#set $parent = $notebook() and 'self.%s.GetPage(%s)'%$notebook() or 'self'
 waterfallsink2.$(type.fcn)(
 	$(parent).GetWin(),
 	baseband_freq=$baseband_freq,
-	y_per_div=$y_per_div,
+	dynamic_range=$dynamic_range,
 	ref_level=$ref_level,
+	ref_scale=$ref_scale,
 	sample_rate=$samp_rate,
 	fft_size=$fft_size,
 	fft_rate=$fft_rate,
-	average=$options.average,
+	average=$average,
 	avg_alpha=#if $avg_alpha() then $avg_alpha else 'None'#,
 	title=$title,
+#if $win()
+	win=$win,
+#end if
+#if $win_size()
+	size=$win_size,
+#end if
 )
 #if not $grid_pos()
 $(parent).Add(self.$(id).win)
@@ -63,15 +71,21 @@ $(parent).GridAdd(self.$(id).win, $(', '.join(map(str, $grid_pos()))))
 		<type>real</type>
 	</param>
 	<param>
-		<name>Y per Div</name>
-		<key>y_per_div</key>
-		<value>10</value>
+		<name>Dynamic Range</name>
+		<key>dynamic_range</key>
+		<value>100</value>
 		<type>real</type>
 	</param>
 	<param>
 		<name>Reference Level</name>
 		<key>ref_level</key>
 		<value>50</value>
+		<type>real</type>
+	</param>
+	<param>
+		<name>Ref Scale (p2p)</name>
+		<key>ref_scale</key>
+		<value>2.0</value>
 		<type>real</type>
 	</param>
 	<param>
@@ -87,26 +101,64 @@ $(parent).GridAdd(self.$(id).win, $(', '.join(map(str, $grid_pos()))))
 		<type>int</type>
 	</param>
 	<param>
+		<name>Average</name>
+		<key>average</key>
+		<value>False</value>
+		<type>enum</type>
+		<hide>part</hide>
+		<option>
+			<name>On</name>
+			<key>True</key>
+		</option>
+		<option>
+			<name>Off</name>
+			<key>False</key>
+		</option>
+	</param>
+	<param>
 		<name>Average Alpha</name>
 		<key>avg_alpha</key>
 		<value>0</value>
 		<type>real</type>
+		<hide>#if $average() == 'True' then 'none' else 'all'#</hide>
 	</param>
 	<param>
-		<name>Options</name>
-		<key>options</key>
-		<value>none</value>
-		<type>enum</type>
+		<name>Window</name>
+		<key>win</key>
+		<value>None</value>
+		<type>raw</type>
+		<hide>#if $win() is None then 'part' else 'none'#</hide>
 		<option>
-			<name>None</name>
-			<key>none</key>
-			<opt>average:False</opt>
+			<name>Automatic</name>
+			<key>None</key>
 		</option>
 		<option>
-			<name>Average</name>
-			<key>average</key>
-			<opt>average:True</opt>
+			<name>Blackman-Harris</name>
+			<key>window.blackmanharris</key>
 		</option>
+		<option>
+			<name>Hamming</name>
+			<key>window.hamming</key>
+		</option>
+		<option>
+			<name>Hanning</name>
+			<key>window.hanning</key>
+		</option>
+		<option>
+			<name>Rectangular</name>
+			<key>window.rectangular</key>
+		</option>
+		<option>
+			<name>Flattop</name>
+			<key>window.flattop</key>
+		</option>
+	</param>
+	<param>
+		<name>Window Size</name>
+		<key>win_size</key>
+		<value></value>
+		<type>int_vector</type>
+		<hide>#if $win_size() then 'none' else 'part'#</hide>
 	</param>
 	<param>
 		<name>Grid Position</name>
@@ -120,12 +172,15 @@ $(parent).GridAdd(self.$(id).win, $(', '.join(map(str, $grid_pos()))))
 		<value></value>
 		<type>notebook</type>
 	</param>
+	<check>not $win_size or len($win_size) == 2</check>
 	<sink>
 		<name>in</name>
 		<type>$type</type>
 	</sink>
 	<doc>
 Set Average Alpha to 0 for automatic setting.
+
+Leave the window blank for the default size, otherwise enter a tuple of (width, height) pixels.
 
 Use the Grid Position (row, column, row span, column span) to position the graphical element in the window.
 

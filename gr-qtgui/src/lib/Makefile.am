@@ -26,7 +26,6 @@ AM_CPPFLAGS = $(STD_DEFINES_AND_INCLUDES) $(PYTHON_CPPFLAGS) \
 
 # Only include these files in the build if qtgui passes configure checks
 # This is mostly to help make distcheck pass
-if BUILD_QT
 QMAKE_SOURCES = 				\
 	spectrumdisplayform_moc.cc		\
 	FrequencyDisplayPlot_moc.cc	 	\
@@ -35,9 +34,10 @@ QMAKE_SOURCES = 				\
 	Waterfall3DDisplayPlot_moc.cc		\
 	ConstellationDisplayPlot_moc.cc		\
 	spectrumdisplayform_ui.h
-endif
 
 EXTRA_DIST = spectrumdisplayform.ui
+
+BUILT_SOURCES = $(QMAKE_SOURCES)
 
 # Build the normal library for C++ apps to link against
 lib_LTLIBRARIES = libgnuradio-qtgui.la
@@ -75,28 +75,21 @@ grinclude_HEADERS =			\
 	qtgui_sink_c.h			\
 	qtgui_sink_f.h
 
-if BUILD_QT
 %_moc.cc : %.h
-	$(QT_MOC_EXEC) -DQT_SHARED -DQT_NO_DEBUG -DQT_OPENGL_LIB -DQT_GUI_LIB -DQT_CORE_LIB $< -o $@
+	$(QT_MOC_EXEC) -DQT_SHARED -DQT_NO_DEBUG -DQT_OPENGL_LIB -DQT_GUI_LIB -DQT_CORE_LIB -p $(srcdir) $< -o $@
 
 %_ui.h : %.ui
 	$(QT_UIC_EXEC) $< -o $@
-else
-%_moc.cc : %.h
-	touch $@
-
-%_ui.h : %.ui
-	touch $@
-endif
 
 # magic flags
-libgnuradio_qtgui_la_LDFLAGS = $(NO_UNDEFINED) -version-info 0:0:0
+libgnuradio_qtgui_la_LDFLAGS = $(NO_UNDEFINED) $(LTVERSIONFLAGS)
 
 libgnuradio_qtgui_la_LIBADD = 		\
 	$(GNURADIO_CORE_LA)	\
 	-lstdc++		\
 	$(QT_LIBS)
 
+if PYTHON
 ##############################
 # SWIG interface and library
 
@@ -117,9 +110,10 @@ qtgui_la_swig_libadd =		\
 include $(top_srcdir)/Makefile.swig
 
 # add some of the variables generated inside the Makefile.swig.gen
-BUILT_SOURCES = 		\
-	$(QMAKE_SOURCES)	\
+BUILT_SOURCES += 		\
 	$(swig_built_sources)
+endif
 
-# Do not distribute the output of SWIG
-no_dist_files = $(swig_built_sources)
+# Do not distribute built sources, they may contain generated paths
+# which are invalid on other systems
+no_dist_files = $(BUILT_SOURCES)

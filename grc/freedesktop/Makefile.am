@@ -19,7 +19,7 @@
 # Boston, MA 02110-1301, USA.
 #
 
-include $(top_srcdir)/grc/Makefile.inc
+include $(top_srcdir)/Makefile.common
 
 ourdatadir = $(pkgdatadir)/grc/freedesktop
 
@@ -30,7 +30,7 @@ dist_ourdata_DATA = \
 	grc-icon-48.png \
 	grc-icon-32.png \
 	gnuradio-grc.xml \
-	gnuradio-grc.desktop \
+	gnuradio-gnuradio-companion.desktop \
 	gnuradio-usrp2_probe.desktop \
 	gnuradio-usrp_probe.desktop
 

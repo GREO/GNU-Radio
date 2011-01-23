@@ -63,6 +63,8 @@ private:
 		bool use_openGL,
 		QWidget *parent);
 
+  void forecast(int noutput_items, gr_vector_int &ninput_items_required);
+
   void initialize(const bool opengl=true);
 
   int d_fftsize;
@@ -76,12 +78,13 @@ private:
 
   bool d_shift;
   gri_fft_complex *d_fft;
-  gr_complex *d_fftdata;
 
   int d_index;
   float *d_residbuf;
 
   bool d_plotfreq, d_plotwaterfall, d_plotwaterfall3d, d_plottime, d_plotconst;
+
+  double d_update_time;
 
   QWidget *d_parent;
   SpectrumGUIClass *d_main_gui; 
@@ -89,7 +92,7 @@ private:
   void windowreset();
   void buildwindow();
   void fftresize();
-  void fft(const float *data_in, int size, gr_complex *data_out);
+  void fft(const float *data_in, int size);
   
 public:
   ~qtgui_sink_f();
@@ -105,7 +108,10 @@ public:
   void set_time_domain_axis(double min, double max);
   void set_constellation_axis(double xmin, double xmax,
 			      double ymin, double ymax);
+  void set_constellation_pen_size(int size);
   void set_frequency_axis(double min, double max);
+
+  void set_update_time(double t);
 
   QApplication *d_qApplication;
   qtgui_obj *d_object;

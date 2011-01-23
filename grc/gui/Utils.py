@@ -19,6 +19,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 from Constants import POSSIBLE_ROTATIONS
 from Cheetah.Template import Template
+import pygtk
+pygtk.require('2.0')
+import gtk
+import gobject
+
+def rotate_pixmap(gc, src_pixmap, dst_pixmap, angle=gtk.gdk.PIXBUF_ROTATE_COUNTERCLOCKWISE):
+	"""
+	Load the destination pixmap with a rotated version of the source pixmap.
+	The source pixmap will be loaded into a pixbuf, rotated, and drawn to the destination pixmap.
+	The pixbuf is a client-side drawable, where a pixmap is a server-side drawable.
+	@param gc the graphics context
+	@param src_pixmap the source pixmap
+	@param dst_pixmap the destination pixmap
+	@param angle the angle to rotate by
+	"""
+	width, height = src_pixmap.get_size()
+	pixbuf = gtk.gdk.Pixbuf(
+		colorspace=gtk.gdk.COLORSPACE_RGB,
+		has_alpha=False, bits_per_sample=8,
+		width=width, height=height,
+	)
+	pixbuf.get_from_drawable(src_pixmap, src_pixmap.get_colormap(), 0, 0, 0, 0, -1, -1)
+	pixbuf = pixbuf.rotate_simple(angle)
+	dst_pixmap.draw_pixbuf(gc, pixbuf, 0, 0, 0, 0)
 
 def get_rotated_coordinate(coor, rotation):
 	"""
@@ -54,23 +78,6 @@ def get_angle_from_coordinates((x1,y1), (x2,y2)):
 		if y2 > y1: return 270
 		else: return 90
 
-def xml_encode(string):
-	"""
-	Encode a string into an xml safe string by replacing special characters.
-	Needed for gtk pango markup in labels.
-	@param string the input string
-	@return output string with safe characters
-	"""
-	string = str(string)
-	for char, safe in (
-			('&', '&amp;'),
-			('<', '&lt;'),
-			('>', '&gt;'),
-			('"', '&quot;'),
-			("'", '&apos;'),
-	): string = string.replace(char, safe)
-	return string
-
 def parse_template(tmpl_str, **kwargs):
 	"""
 	Parse the template string with the given args.
@@ -78,5 +85,5 @@ def parse_template(tmpl_str, **kwargs):
 	@param tmpl_str the template as a string
 	@return a string of the parsed template
 	"""
-	kwargs['encode'] = xml_encode
+	kwargs['encode'] = gobject.markup_escape_text
 	return str(Template(tmpl_str, kwargs))

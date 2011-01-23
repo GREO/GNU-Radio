@@ -13,6 +13,7 @@ class SpectrumGUIClass;
 #include <TimeDomainDisplayPlot.h>
 #include <ConstellationDisplayPlot.h>
 #include <QValidator>
+#include <QTimer>
 #include <vector>
 
 class SpectrumDisplayForm : public QWidget, public Ui::SpectrumDisplayForm
@@ -36,12 +37,13 @@ class SpectrumDisplayForm : public QWidget, public Ui::SpectrumDisplayForm
 public slots:
   void resizeEvent( QResizeEvent * e );
   void customEvent( QEvent * e );
-  void AvgLineEdit_textChanged( const QString & valueString );
+  void AvgLineEdit_valueChanged( int valueString );
   void MaxHoldCheckBox_toggled( bool newState );
   void MinHoldCheckBox_toggled( bool newState );
   void MinHoldResetBtn_clicked();
   void MaxHoldResetBtn_clicked();
-  void PowerLineEdit_textChanged( const QString& valueString );
+  void TabChanged(int index);
+
   void SetFrequencyRange( const double newCenterFrequency,
 			  const double newStartFrequency,
 			  const double newStopFrequency );
@@ -67,10 +69,13 @@ public slots:
   void SetTimeDomainAxis(double min, double max);
   void SetConstellationAxis(double xmin, double xmax,
 			    double ymin, double ymax);
+  void SetConstellationPenSize(int size);
   void SetFrequencyAxis(double min, double max);
+  void SetUpdateTime(double t);
 
 private slots:
   void newFrequencyData( const SpectrumUpdateEvent* );
+  void UpdateGuiTimer();
 
 protected:
 
@@ -99,13 +104,18 @@ private:
   double _peakAmplitude;
   static int _openGLWaterfall3DFlag;
   double _stopFrequency;
-
+  
+  //SpectrumUpdateEvent _lastSpectrumEvent;
+  
   // whether or not to use a particular display
   int d_plot_fft;
   int d_plot_waterfall;
   int d_plot_waterfall3d;
   int d_plot_time;
   int d_plot_constellation;
+
+  QTimer *displayTimer;
+  double d_update_time;
 };
 
 #endif /* SPECTRUM_DISPLAY_FORM_H */

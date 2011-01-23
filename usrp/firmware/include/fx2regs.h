@@ -26,8 +26,8 @@
 //   Contents:   EZ-USB FX2 register declarations and bit mask definitions.
 //
 // $Archive: /USB/Target/Inc/fx2regs.h $
-// $Date: 2007-07-20 20:44:38 -0700 (Fri, 20 Jul 2007) $
-// $Revision: 6044 $
+// $Date$
+// $Revision$
 //
 //
 //   Copyright (c) 2000 Cypress Semiconductor, All rights reserved

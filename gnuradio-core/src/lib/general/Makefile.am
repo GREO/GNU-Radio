@@ -31,9 +31,10 @@ BUILT_SOURCES =
 
 EXTRA_DIST = 				\
 	gen_sine_table.py		\
-	gr_prefix.cc.in			
+	gr_constants.cc.in			
 
 libgeneral_la_SOURCES = 		\
+	gr_additive_scrambler_bb.cc	\
 	gr_agc_cc.cc                	\
 	gr_agc_ff.cc                	\
 	gr_agc2_cc.cc                	\
@@ -51,6 +52,7 @@ libgeneral_la_SOURCES = 		\
 	gr_complex_to_interleaved_short.cc \
 	gr_complex_to_xxx.cc		\
 	gr_conjugate_cc.cc		\
+	gr_copy.cc			\
 	gr_constellation_decoder_cb.cc	\
 	gr_correlate_access_code_bb.cc	\
 	gr_costas_loop_cc.cc		\
@@ -58,7 +60,6 @@ libgeneral_la_SOURCES = 		\
 	gr_cpfsk_bc.cc			\
 	gr_crc32.cc			\
 	gr_ctcss_squelch_ff.cc		\
-	gr_dd_mpsk_sync_cc.cc		\
 	gr_decode_ccsds_27_fb.cc	\
 	gr_deinterleave.cc		\
 	gr_delay.cc			\
@@ -75,6 +76,7 @@ libgeneral_la_SOURCES = 		\
 	gr_fft_vcc_fftw.cc		\
 	gr_fft_vfc.cc			\
 	gr_firdes.cc			\
+	gr_fll_band_edge_cc.cc		\
 	gr_float_to_char.cc		\
 	gr_float_to_complex.cc		\
 	gr_float_to_short.cc		\
@@ -117,7 +119,7 @@ libgeneral_la_SOURCES = 		\
 	gr_pll_freqdet_cf.cc		\
 	gr_pll_refout_cc.cc		\
 	gr_pn_correlator_cc.cc		\
-	gr_prefix.cc			\
+	gr_constants.cc			\
 	gr_prefs.cc			\
 	gr_probe_avg_mag_sqrd_c.cc	\
 	gr_probe_avg_mag_sqrd_cf.cc	\
@@ -186,6 +188,7 @@ libgeneral_qa_la_SOURCES = 		\
 	qa_gri_lfsr.cc
 
 grinclude_HEADERS = 			\
+	gr_additive_scrambler_bb.h	\
 	gr_agc_cc.h                 	\
 	gr_agc_ff.h                 	\
 	gr_agc2_cc.h                	\
@@ -204,13 +207,13 @@ grinclude_HEADERS = 			\
 	gr_complex_to_xxx.h		\
 	gr_conjugate_cc.h		\
 	gr_constellation_decoder_cb.h	\
+	gr_copy.h			\
 	gr_correlate_access_code_bb.h	\
 	gr_costas_loop_cc.h		\
 	gr_count_bits.h			\
 	gr_cpfsk_bc.h			\
 	gr_crc32.h			\
 	gr_ctcss_squelch_ff.h		\
-	gr_dd_mpsk_sync_cc.h		\
 	gr_decode_ccsds_27_fb.h		\
 	gr_diff_decoder_bb.h		\
 	gr_diff_encoder_bb.h		\
@@ -227,6 +230,7 @@ grinclude_HEADERS = 			\
 	gr_fft_vcc_fftw.h		\
 	gr_fft_vfc.h			\
 	gr_firdes.h			\
+	gr_fll_band_edge_cc.h		\
 	gr_float_to_char.h		\
 	gr_float_to_complex.h		\
 	gr_float_to_short.h		\
@@ -273,7 +277,7 @@ grinclude_HEADERS = 			\
 	gr_pll_freqdet_cf.h		\
 	gr_pll_refout_cc.h		\
 	gr_pn_correlator_cc.h		\
-	gr_prefix.h			\
+	gr_constants.h			\
 	gr_prefs.h			\
 	gr_probe_avg_mag_sqrd_c.h	\
 	gr_probe_avg_mag_sqrd_cf.h	\
@@ -353,8 +357,10 @@ noinst_HEADERS = 			\
 	sine_table.h			\
 	qa_gr_math.h
 
+if PYTHON
 swiginclude_HEADERS =			\
 	general.i			\
+	gr_additive_scrambler_bb.i	\
 	gr_agc_cc.i                 	\
 	gr_agc_ff.i                 	\
 	gr_agc2_cc.i                 	\
@@ -372,12 +378,12 @@ swiginclude_HEADERS =			\
 	gr_complex_to_xxx.i		\
 	gr_conjugate_cc.i		\
 	gr_constellation_decoder_cb.i	\
+	gr_copy.i			\
 	gr_correlate_access_code_bb.i	\
 	gr_costas_loop_cc.i		\
 	gr_cpfsk_bc.i			\
 	gr_crc32.i			\
 	gr_ctcss_squelch_ff.i		\
-	gr_dd_mpsk_sync_cc.i		\
 	gr_decode_ccsds_27_fb.i		\
 	gr_diff_decoder_bb.i		\
 	gr_diff_encoder_bb.i		\
@@ -392,6 +398,7 @@ swiginclude_HEADERS =			\
 	gr_fft_vcc.i			\
 	gr_fft_vfc.i			\
 	gr_firdes.i			\
+	gr_fll_band_edge_cc.i		\
 	gr_float_to_char.i		\
 	gr_float_to_complex.i		\
 	gr_float_to_short.i		\
@@ -431,7 +438,7 @@ swiginclude_HEADERS =			\
 	gr_pll_freqdet_cf.i		\
 	gr_pll_refout_cc.i		\
 	gr_pn_correlator_cc.i		\
-	gr_prefix.i			\
+	gr_constants.i			\
 	gr_prefs.i			\
 	gr_probe_avg_mag_sqrd_c.i	\
 	gr_probe_avg_mag_sqrd_cf.i	\
@@ -478,3 +485,4 @@ swiginclude_HEADERS =			\
 	gr_scrambler_bb.i		\
 	gr_probe_mpsk_snr_c.i		\
 	gr_probe_density_b.i
+endif

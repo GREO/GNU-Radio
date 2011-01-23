@@ -18,7 +18,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 """
 
 import os
-import sys
 import stat
 from gnuradio import gr
 
@@ -61,3 +60,4 @@ SHORT_VECTOR_COLOR_SPEC = '#CCCC33'
 BYTE_VECTOR_COLOR_SPEC = '#CC66CC'
 ID_COLOR_SPEC = '#DDDDDD'
 WILDCARD_COLOR_SPEC = '#FFFFFF'
+MSG_COLOR_SPEC = '#777777'

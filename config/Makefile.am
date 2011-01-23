@@ -1,5 +1,5 @@
 #
-# Copyright 2001,2006,2008 Free Software Foundation, Inc.
+# Copyright 2001,2006,2008,2009,2010 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -61,6 +61,7 @@ m4macros = \
 	grc_gr_gcell.m4 \
 	grc_gr_gpio.m4 \
 	grc_gr_gsm_fr_vocoder.m4 \
+	grc_gr_noaa.m4 \
 	grc_gr_radar_mono.m4 \
 	grc_gr_radio_astronomy.m4 \
 	grc_gr_sounder.m4 \
@@ -68,24 +69,22 @@ m4macros = \
 	grc_gr_usrp.m4 \
 	grc_gr_video_sdl.m4 \
 	grc_gr_wxgui.m4 \
-	grc_mblock.m4 \
 	grc_gruel.m4 \
 	gr_check_createfilemapping.m4 \
 	gr_check_mc4020.m4 \
 	gr_check_shm_open.m4 \
 	gr_check_usrp.m4 \
-	grc_pmt.m4 \
 	grc_usrp.m4 \
 	grc_usrp2.m4 \
 	grc_gr_msdd6000.m4 \
 	gr_doxygen.m4 \
 	gr_fortran.m4 \
 	gr_gcell.m4 \
+	gr_git.m4 \
 	gr_gprof.m4 \
 	gr_lib64.m4 \
 	gr_libgnuradio_core_extra_ldflags.m4 \
 	gr_no_undefined.m4 \
-	gr_omnithread.m4 \
 	gr_pwin32.m4 \
 	gr_python.m4 \
 	gr_require_mc4020.m4 \
@@ -95,6 +94,7 @@ m4macros = \
 	gr_subversion.m4 \
 	gr_swig.m4 \
 	gr_sysv_shm.m4 \
+	gr_version.m4 \
 	lf_cc.m4 \
 	lf_cxx.m4 \
 	lf_warnings.m4 \

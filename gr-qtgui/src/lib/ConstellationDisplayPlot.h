@@ -14,15 +14,18 @@
 #include <highResTimeFunctions.h>
 #include <qwt_symbol.h>
 
-class ConstellationDisplayPlot:public QwtPlot{
+class ConstellationDisplayPlot : public QwtPlot
+{
   Q_OBJECT
 
 public:
   ConstellationDisplayPlot(QWidget*);
   virtual ~ConstellationDisplayPlot();
 
-  void PlotNewData(const double* realDataPoints, const double* imagDataPoints, 
-		   const int64_t numDataPoints);
+  void PlotNewData(const double* realDataPoints, 
+		   const double* imagDataPoints, 
+		   const int64_t numDataPoints,
+		   const double timeInterval);
     
   virtual void replot();
 
@@ -30,6 +33,10 @@ public:
   void set_yaxis(double min, double max);
   void set_axis(double xmin, double xmax,
 		double ymin, double ymax);
+  void set_pen_size(int size);
+
+public slots:
+  void resizeSlot( QSize *s );
 
 protected slots:
   void LegendEntryChecked(QwtPlotItem *plotItem, bool on);
@@ -48,8 +55,7 @@ private:
   timespec _lastReplot;
 
   int64_t _numPoints;
-
-  double _displayIntervalTime;
+  int64_t _penSize;
 };
 
 #endif /* CONSTELLATION_DISPLAY_PLOT_HPP */

@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 /*
- * Copyright 2008 Free Software Foundation, Inc.
+ * Copyright 2008,2009,2010 Free Software Foundation, Inc.
  * 
  * This file is part of GNU Radio
  * 
@@ -23,34 +23,43 @@
 #include <config.h>
 #endif
 
-#include <gnuradio/omni_time.h>
 #include "control.h"
 #include <iostream>
+#include <gruel/thread.h>
 
 namespace usrp2 {
 
   pending_reply::pending_reply(unsigned int rid, void *buffer, size_t len)
-    : d_rid(rid), d_mutex(), d_cond(&d_mutex), d_buffer(buffer), d_len(len)
+    : d_rid(rid), d_buffer(buffer), d_len(len), d_mutex(), d_cond(),
+      d_complete(false)
   {
   }
 
   pending_reply::~pending_reply()
   {
-    signal(); // Needed?
+    notify_completion(); // Needed?
   }
 
   int
-  pending_reply::wait(double secs)
+  pending_reply::wait_for_completion(double secs)
   {
-    omni_mutex_lock l(d_mutex);
-    omni_time abs_timeout = omni_time::time(omni_time(secs));
-    return d_cond.timedwait(abs_timeout.d_secs, abs_timeout.d_nsecs);
+    gruel::scoped_lock l(d_mutex);
+    boost::system_time to(gruel::get_new_timeout(secs));
+
+    while (!d_complete) {
+      if (!d_cond.timed_wait(l, to))
+	return 0; // timed out
+    }
+
+    return 1;
   }
 
   void
-  pending_reply::signal()
+  pending_reply::notify_completion()
   {
-    d_cond.signal();
+    gruel::scoped_lock l(d_mutex);
+    d_complete = true;
+    d_cond.notify_one();
   }
   
 } // namespace usrp2

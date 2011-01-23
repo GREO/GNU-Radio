@@ -27,6 +27,8 @@
 #include <gr_basic_block.h>
 #include <stdexcept>
 
+using namespace pmt;
+
 static long s_next_id = 0;
 static long s_ncurrently_allocated = 0;
 

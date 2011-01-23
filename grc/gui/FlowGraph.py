@@ -1,5 +1,5 @@
 """
-Copyright 2007, 2008, 2009 Free Software Foundation, Inc.
+Copyright 2007, 2008, 2009, 2010 Free Software Foundation, Inc.
 This file is part of GNU Radio
 
 GNU Radio Companion is free software; you can redistribute it and/or
@@ -18,14 +18,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 """
 
 from Constants import SCROLL_PROXIMITY_SENSITIVITY, SCROLL_DISTANCE
-from Actions import \
-	ELEMENT_CREATE, ELEMENT_SELECT, \
-	BLOCK_PARAM_MODIFY, BLOCK_MOVE, \
-	ELEMENT_DELETE
+import Actions
 import Colors
 import Utils
 from Element import Element
-from .. base import FlowGraph as _FlowGraph
 import pygtk
 pygtk.require('2.0')
 import gtk
@@ -39,7 +35,7 @@ class FlowGraph(Element):
 	and the connections between inputs and outputs.
 	"""
 
-	def __init__(self, *args, **kwargs):
+	def __init__(self):
 		"""
 		FlowGraph contructor.
 		Create a list for signal blocks and connections. Connect mouse handlers.
@@ -55,6 +51,19 @@ class FlowGraph(Element):
 		#selected ports
 		self._old_selected_port = None
 		self._new_selected_port = None
+		#context menu
+		self._context_menu = gtk.Menu()
+		for action in [
+			Actions.BLOCK_CUT,
+			Actions.BLOCK_COPY,
+			Actions.BLOCK_PASTE,
+			Actions.ELEMENT_DELETE,
+			Actions.BLOCK_ROTATE_CCW,
+			Actions.BLOCK_ROTATE_CW,
+			Actions.BLOCK_ENABLE,
+			Actions.BLOCK_DISABLE,
+			Actions.BLOCK_PARAM_MODIFY,
+		]: self._context_menu.append(action.create_menu_item())
 
 	###########################################################################
 	# Access Drawing Area
@@ -86,7 +95,7 @@ class FlowGraph(Element):
 		block.set_coordinate(coor)
 		block.set_rotation(0)
 		block.get_param('id').set_value(id)
-		self.handle_states(ELEMENT_CREATE)
+		Actions.ELEMENT_CREATE()
 
 	###########################################################################
 	# Copy Paste
@@ -291,10 +300,13 @@ class FlowGraph(Element):
 
 	def update(self):
 		"""
-		Call update on all elements.
+		Call the top level rewrite and validate.
+		Call the top level create labels and shapes.
 		"""
+		self.rewrite()
 		self.validate()
-		for element in self.get_elements(): element.update()
+		self.create_labels()
+		self.create_shapes()
 
 	##########################################################################
 	## Get Selected
@@ -406,7 +418,7 @@ class FlowGraph(Element):
 			self._old_selected_port is not self._new_selected_port:
 			try:
 				self.connect(self._old_selected_port, self._new_selected_port)
-				self.handle_states(ELEMENT_CREATE)
+				Actions.ELEMENT_CREATE()
 			except: Messages.send_fail_connection()
 			self._old_selected_port = None
 			self._new_selected_port = None
@@ -421,19 +433,32 @@ class FlowGraph(Element):
 			self._selected_elements = list(
 				set.union(old_elements, new_elements) - set.intersection(old_elements, new_elements)
 			)
-		self.handle_states(ELEMENT_SELECT)
+		Actions.ELEMENT_SELECT()
 
 	##########################################################################
 	## Event Handlers
 	##########################################################################
-	def handle_mouse_button_press(self, left_click, double_click, coordinate):
+	def handle_mouse_context_press(self, coordinate, event):
 		"""
-		A mouse button is pressed, only respond to left clicks.
+		The context mouse button was pressed:
+		If no elements were selected, perform re-selection at this coordinate.
+		Then, show the context menu at the mouse click location.
+		"""
+		selections = self.what_is_selected(coordinate)
+		if not set(selections).intersection(self.get_selected_elements()):
+			self.set_coordinate(coordinate)
+			self.mouse_pressed = True
+			self.update_selected_elements()
+			self.mouse_pressed = False
+		self._context_menu.popup(None, None, None, event.button, event.time)
+
+	def handle_mouse_selector_press(self, double_click, coordinate):
+		"""
+		The selector mouse button was pressed:
 		Find the selected element. Attempt a new connection if possible.
 		Open the block params window on a double click.
 		Update the selection state of the flow graph.
 		"""
-		if not left_click: return
 		self.press_coor = coordinate
 		self.set_coordinate(coordinate)
 		self.time = 0
@@ -443,18 +468,19 @@ class FlowGraph(Element):
 		#double click detected, bring up params dialog if possible
 		if double_click and self.get_selected_block():
 			self.mouse_pressed = False
-			self.handle_states(BLOCK_PARAM_MODIFY)
+			Actions.BLOCK_PARAM_MODIFY()
 
-	def handle_mouse_button_release(self, left_click, coordinate):
+	def handle_mouse_selector_release(self, coordinate):
 		"""
-		A mouse button is released, record the state.
+		The selector mouse button was released:
+		Update the state, handle motion (dragging).
+		And update the selected flowgraph elements.
 		"""
-		if not left_click: return
 		self.set_coordinate(coordinate)
 		self.time = 0
 		self.mouse_pressed = False
 		if self.element_moved:
-			self.handle_states(BLOCK_MOVE)
+			Actions.BLOCK_MOVE()
 			self.element_moved = False
 		self.update_selected_elements()
 
@@ -484,7 +510,7 @@ class FlowGraph(Element):
 				adj.emit('changed')
 		#remove the connection if selected in drag event
 		if len(self.get_selected_elements()) == 1 and self.get_selected_element().is_connection():
-			self.handle_states(ELEMENT_DELETE)
+			Actions.ELEMENT_DELETE()
 		#move the selected elements and record the new coordinate
 		X, Y = self.get_coordinate()
 		if not self.get_ctrl_mask(): self.move_selected((int(x - X), int(y - Y)))

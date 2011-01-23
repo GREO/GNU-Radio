@@ -26,8 +26,6 @@ include $(top_srcdir)/Makefile.common
 
 EXTRA_DIST = run_tests.in
 
-TESTS = run_tests
-
 DISTCLEANFILES = run_tests
 
 noinst_PYTHON =	qa_usrp.py
@@ -39,6 +37,7 @@ AM_CPPFLAGS = \
 	$(STD_DEFINES_AND_INCLUDES) \
 	$(PYTHON_CPPFLAGS) \
 	$(USRP_INCLUDES) \
+	$(USB_INCLUDES) \
 	$(WITH_INCLUDES)
 
 lib_LTLIBRARIES = \
@@ -57,7 +56,7 @@ libgnuradio_usrp_la_LIBADD = \
 	$(GNURADIO_CORE_LA) \
 	$(USRP_LA)			
 
-libgnuradio_usrp_la_LDFLAGS = $(NO_UNDEFINED) -version-info 0:0:0
+libgnuradio_usrp_la_LDFLAGS = $(NO_UNDEFINED) $(LTVERSIONFLAGS)
 
 grinclude_HEADERS = \
 	usrp_base.h \
@@ -68,8 +67,10 @@ grinclude_HEADERS = \
 	usrp_source_c.h \
 	usrp_source_s.h
 
+if PYTHON
 # ----------------------------------------------------------------
 # The SWIG library
+TESTS = run_tests
 
 TOP_SWIG_IFILES =		\
 	usrp_swig.i
@@ -111,3 +112,4 @@ BUILT_SOURCES = $(swig_built_sources)
 
 # Do not distribute the output of SWIG
 no_dist_files = $(swig_built_sources)
+endif

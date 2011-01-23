@@ -1,5 +1,5 @@
 #
-# Copyright 2008 Free Software Foundation, Inc.
+# Copyright 2008,2009,2010 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -21,21 +21,43 @@
 
 include $(top_srcdir)/Makefile.common
 
-AM_CPPFLAGS = $(DEFINES) $(BOOST_CPPFLAGS) $(GRUEL_INCLUDES) $(WITH_INCLUDES)
+SUBDIRS = pmt msg
+
+AM_CPPFLAGS = $(DEFINES) $(BOOST_CPPFLAGS) $(CPPUNIT_INCLUDES) $(GRUEL_INCLUDES) $(WITH_INCLUDES)
+
+
+TESTS = test_gruel
+
+noinst_PROGRAMS = test_gruel
+
 
 lib_LTLIBRARIES = libgruel.la
 
 # magic flags
-libgruel_la_LDFLAGS = $(NO_UNDEFINED) $(BOOST_LDFLAGS) -version-info 0:0:0
+libgruel_la_LDFLAGS = $(NO_UNDEFINED) $(BOOST_LDFLAGS) $(LTVERSIONFLAGS)
+
+# ----------------------------------------------------------------
+
+PMT_LIB = pmt/libpmt.la
+MSG_LIB = msg/libmsg.la
 
 # These are the source files that go into the gruel shared library
-libgruel_la_SOURCES = \
-	realtime.cc \
-	sys_pri.cc \
-	thread_body_wrapper.cc \
+libgruel_la_SOURCES = 			\
+	realtime.cc 			\
+	sys_pri.cc 			\
+	thread.cc			\
+	thread_body_wrapper.cc 		\
 	thread_group.cc
 
-libgruel_la_LIBADD = \
-	$(BOOST_THREAD_LIB)
+libgruel_la_LIBADD = 			\
+	$(BOOST_THREAD_LIB) 		\
+	$(PMT_LIB)			\
+	$(MSG_LIB)			\
+	-lstdc++
 
-noinst_HEADERS =
+
+# ----------------------------------------------------------------
+
+test_gruel_SOURCES = test_gruel.cc
+test_gruel_LDADD   = pmt/libpmt-qa.la libgruel.la
+

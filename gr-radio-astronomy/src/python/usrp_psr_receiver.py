@@ -1089,7 +1089,7 @@ class app_flow_graph(stdgui2.std_top_block):
         return(int(ntaps))
 
 def main ():
-    app = stdgui2.stdapp(app_flow_graph, "RADIO ASTRONOMY PULSAR RECEIVER: $Revision: 7241 $", nstatus=1)
+    app = stdgui2.stdapp(app_flow_graph, "RADIO ASTRONOMY PULSAR RECEIVER: $Revision$", nstatus=1)
     app.MainLoop()
 
 if __name__ == '__main__':

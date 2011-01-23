@@ -1,4 +1,4 @@
-# Copyright 2009 Free Software Foundation, Inc.
+# Copyright 2009, 2010 Free Software Foundation, Inc.
 #
 # This file is part of GNU Radio
 #
@@ -19,7 +19,7 @@
 #
 
 import common
-from gnuradio import gr, usrp
+from gnuradio import gr
 
 ####################################################################
 # Dual USRP Source
@@ -27,7 +27,7 @@ from gnuradio import gr, usrp
 class _dual_source(gr.hier_block2):
 	"""A dual usrp source of IO type short or complex."""
 
-	def __init__(self, which, rx_ant_a='RXA', rx_ant_b='RXA'):
+	def __init__(self, which, rx_ant_a='RXA', rx_ant_b='RXA', rx_source_a='A', rx_source_b='B'):
 		"""
 		USRP dual source contructor.
 		@param which the unit number
@@ -42,8 +42,8 @@ class _dual_source(gr.hier_block2):
 		)
 		#create usrp object
 		self._make_usrp(which=which, nchan=2)
-		subdev_spec_a = common.to_spec('A', rx_ant_a)
-		subdev_spec_b = common.to_spec('B', rx_ant_b)
+		subdev_spec_a = common.to_spec(rx_source_a, rx_ant_a)
+		subdev_spec_b = common.to_spec(rx_source_b, rx_ant_b)
 		self._get_u().set_mux(self._get_u().determine_rx_mux_value(subdev_spec_a, subdev_spec_b))
 		self._subdev_a = self._get_u().selected_subdev(subdev_spec_a)
 		self._subdev_b = self._get_u().selected_subdev(subdev_spec_b)
@@ -53,22 +53,22 @@ class _dual_source(gr.hier_block2):
 		for i in range(2): self.connect((deinter, i), (self, i))
 
 	def set_decim_rate(self, decim): self._get_u().set_decim_rate(int(decim))
-	def set_frequency_a(self, frequency, verbose=False):
+	def set_frequency_a(self, frequency, verbose=False, lo_offset=None):
+		if lo_offset is not None: self._subdev_a.set_lo_offset(lo_offset)
 		self._set_frequency(
 			chan=0, #ddc0
 			subdev=self._subdev_a,
 			frequency=frequency,
 			verbose=verbose,
 		)
-	def set_frequency_b(self, frequency, verbose=False):
+	def set_frequency_b(self, frequency, verbose=False, lo_offset=None):
+		if lo_offset is not None: self._subdev_b.set_lo_offset(lo_offset)
 		self._set_frequency(
 			chan=1, #ddc1
 			subdev=self._subdev_b,
 			frequency=frequency,
 			verbose=verbose,
 		)
-	def set_lo_offset_a(self, lo_offset): self._subdev_a.set_lo_offset(lo_offset)
-	def set_lo_offset_b(self, lo_offset): self._subdev_b.set_lo_offset(lo_offset)
 	def set_gain_a(self, gain): self._subdev_a.set_gain(gain)
 	def set_gain_b(self, gain): self._subdev_b.set_gain(gain)
 
@@ -105,22 +105,22 @@ class _dual_sink(gr.hier_block2):
 		for i in range(2): self.connect((self, i), (inter, i))
 
 	def set_interp_rate(self, interp): self._get_u().set_interp_rate(int(interp))
-	def set_frequency_a(self, frequency, verbose=False):
+	def set_frequency_a(self, frequency, verbose=False, lo_offset=None):
+		if lo_offset is not None: self._subdev_a.set_lo_offset(lo_offset)
 		self._set_frequency(
 			chan=self._subdev_a.which(),
 			subdev=self._subdev_a,
 			frequency=frequency,
 			verbose=verbose,
 		)
-	def set_frequency_b(self, frequency, verbose=False):
+	def set_frequency_b(self, frequency, verbose=False, lo_offset=None):
+		if lo_offset is not None: self._subdev_b.set_lo_offset(lo_offset)
 		self._set_frequency(
 			chan=self._subdev_b.which(),
 			subdev=self._subdev_b,
 			frequency=frequency,
 			verbose=verbose,
 		)
-	def set_lo_offset_a(self, lo_offset): self._subdev_a.set_lo_offset(lo_offset)
-	def set_lo_offset_b(self, lo_offset): self._subdev_b.set_lo_offset(lo_offset)
 	def set_gain_a(self, gain): self._subdev_a.set_gain(gain)
 	def set_gain_b(self, gain): self._subdev_b.set_gain(gain)
 	def set_enable_a(self, enable): self._subdev_a.set_enable(enable)

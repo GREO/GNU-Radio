@@ -18,7 +18,7 @@ SpectrumDisplayForm::SpectrumDisplayForm(bool useOpenGL, QWidget* parent)
   _waterfallDisplayPlot = new WaterfallDisplayPlot(WaterfallPlotDisplayFrame);
 
   if((QGLFormat::hasOpenGL()) && (_useOpenGL)) {
-    _waterfall3DDisplayPlot = new Waterfall3DDisplayPlot(Waterfall3DPlotDisplayFrame);
+    //_waterfall3DDisplayPlot = new Waterfall3DDisplayPlot(Waterfall3DPlotDisplayFrame);
   }
 
   _timeDomainDisplayPlot = new TimeDomainDisplayPlot(TimeDomainDisplayFrame);
@@ -28,8 +28,7 @@ SpectrumDisplayForm::SpectrumDisplayForm(bool useOpenGL, QWidget* parent)
   _averagedValues = new double[_numRealDataPoints];
   _historyVector = new std::vector<double*>;
   
-  AvgLineEdit->setValidator(_intValidator);
-  PowerLineEdit->setValidator(_intValidator);
+  AvgLineEdit->setRange(0, 500);                 // Set range of Average box value from 0 to 500
   MinHoldCheckBox_toggled( false );
   MaxHoldCheckBox_toggled( false );
   
@@ -72,6 +71,10 @@ SpectrumDisplayForm::SpectrumDisplayForm(bool useOpenGL, QWidget* parent)
   ToggleTabWaterfall3D(false);
   ToggleTabTime(false);
   ToggleTabConstellation(false);
+
+  // Create a timer to update plots at the specified rate
+  displayTimer = new QTimer(this);
+  connect(displayTimer, SIGNAL(timeout()), this, SLOT(UpdateGuiTimer()));
 }
 
 SpectrumDisplayForm::~SpectrumDisplayForm()
@@ -79,7 +82,7 @@ SpectrumDisplayForm::~SpectrumDisplayForm()
   // Qt deletes children when parent is deleted
 
   // Don't worry about deleting Display Plots - they are deleted when parents are deleted
-  /*   delete _intValidator; */
+  delete _intValidator;
 
   delete[] _realFFTDataPoints;
   delete[] _averagedValues;
@@ -89,6 +92,9 @@ SpectrumDisplayForm::~SpectrumDisplayForm()
   }
 
   delete _historyVector;
+
+  displayTimer->stop();
+  delete displayTimer;
 }
 
 void
@@ -110,13 +116,13 @@ SpectrumDisplayForm::setSystem( SpectrumGUIClass * newSystem,
 void
 SpectrumDisplayForm::newFrequencyData( const SpectrumUpdateEvent* spectrumUpdateEvent)
 {
+  //_lastSpectrumEvent = (SpectrumUpdateEvent)(*spectrumUpdateEvent);
   const std::complex<float>* complexDataPoints = spectrumUpdateEvent->getFFTPoints();
   const uint64_t numFFTDataPoints = spectrumUpdateEvent->getNumFFTDataPoints();
   const double* realTimeDomainDataPoints = spectrumUpdateEvent->getRealTimeDomainPoints();
   const double* imagTimeDomainDataPoints = spectrumUpdateEvent->getImagTimeDomainPoints();
   const uint64_t numTimeDomainDataPoints = spectrumUpdateEvent->getNumTimeDomainDataPoints();
-  const double timePerFFT = spectrumUpdateEvent->getTimePerFFT();
-  const timespec dataTimestamp = spectrumUpdateEvent->getDataTimestamp();;
+  const timespec dataTimestamp = spectrumUpdateEvent->getDataTimestamp();
   const bool repeatDataFlag = spectrumUpdateEvent->getRepeatDataFlag();
   const bool lastOfMultipleUpdatesFlag = spectrumUpdateEvent->getLastOfMultipleUpdateFlag();
   const timespec generatedTimestamp = spectrumUpdateEvent->getEventGeneratedTimestamp();
@@ -125,45 +131,55 @@ SpectrumDisplayForm::newFrequencyData( const SpectrumUpdateEvent* spectrumUpdate
   ResizeBuffers(numFFTDataPoints, numTimeDomainDataPoints);
 
   // Calculate the Magnitude of the complex point
-  const std::complex<float>* complexDataPointsPtr = complexDataPoints;
+  const std::complex<float>* complexDataPointsPtr = complexDataPoints+numFFTDataPoints/2;
   double* realFFTDataPointsPtr = _realFFTDataPoints;
-  for(uint64_t point = 0; point < numFFTDataPoints; point++){
-    // Calculate dBm
-    // 50 ohm load assumption
-    // 10 * log10 (v^2 / (2 * 50.0 * .001)) = 10 * log10( v^2 * 10)
-    // 75 ohm load assumption
-    // 10 * log10 (v^2 / (2 * 75.0 * .001)) = 10 * log10( v^2 * 15)
+
+  double sumMean, localPeakAmplitude, localPeakFrequency;
+  const double fftBinSize = (_stopFrequency-_startFrequency) /
+    static_cast<double>(numFFTDataPoints);
+  localPeakAmplitude = -HUGE_VAL;
+  sumMean = 0.0;
+
+  // Run this twice to perform the fftshift operation on the data here as well
+  std::complex<float> scaleFactor = std::complex<float>((float)numFFTDataPoints);
+  for(uint64_t point = 0; point < numFFTDataPoints/2; point++){
+    std::complex<float> pt = (*complexDataPointsPtr) / scaleFactor;
+    *realFFTDataPointsPtr = 10.0*log10((pt.real() * pt.real() + pt.imag()*pt.imag()) + 1e-20);
+
+    if(*realFFTDataPointsPtr > localPeakAmplitude) {
+      localPeakFrequency = static_cast<float>(point) * fftBinSize;
+      localPeakAmplitude = *realFFTDataPointsPtr;
+    }
+    sumMean += *realFFTDataPointsPtr;
     
-    *realFFTDataPointsPtr = 10.0*log10((((*complexDataPointsPtr).real() * (*complexDataPointsPtr).real()) +
-					((*complexDataPointsPtr).imag()*(*complexDataPointsPtr).imag())) + 1e-20);
+    complexDataPointsPtr++;
+    realFFTDataPointsPtr++;
+  }
+  
+  // This loop takes the first half of the input data and puts it in the 
+  // second half of the plotted data
+  complexDataPointsPtr = complexDataPoints;
+  for(uint64_t point = 0; point < numFFTDataPoints/2; point++){
+    std::complex<float> pt = (*complexDataPointsPtr) / scaleFactor;
+    *realFFTDataPointsPtr = 10.0*log10((pt.real() * pt.real() + pt.imag()*pt.imag()) + 1e-20);
+
+    if(*realFFTDataPointsPtr > localPeakAmplitude) {
+      localPeakFrequency = static_cast<float>(point) * fftBinSize;
+      localPeakAmplitude = *realFFTDataPointsPtr;
+    }
+    sumMean += *realFFTDataPointsPtr;
 
     complexDataPointsPtr++;
     realFFTDataPointsPtr++;
   }
- 
-  int tabindex = SpectrumTypeTab->currentIndex();
 
   // Don't update the averaging history if this is repeated data
   if(!repeatDataFlag){
     _AverageHistory(_realFFTDataPoints);
 
-    double sumMean;
-    const double fft_bin_size = (_stopFrequency-_startFrequency) /
-      static_cast<double>(numFFTDataPoints);
-
-    // find the peak, sum (for mean), etc
-    _peakAmplitude = -HUGE_VAL;
-    sumMean = 0.0;
-    for(uint64_t number = 0; number < numFFTDataPoints; number++){
-      // find peak
-      if(_realFFTDataPoints[number] > _peakAmplitude){
-        _peakFrequency = (static_cast<float>(number) * fft_bin_size);  // Calculate the frequency relative to the local bw, adjust for _startFrequency later
-        _peakAmplitude = _realFFTDataPoints[number];
-        // _peakBin = number;
-      }
-      // sum (for mean)
-      sumMean += _realFFTDataPoints[number];
-    }
+    // Only use the local info if we are not repeating data
+    _peakAmplitude = localPeakAmplitude;
+    _peakFrequency = localPeakFrequency;
 
     // calculate the spectral mean
     // +20 because for the comparison below we only want to throw out bins
@@ -187,38 +203,44 @@ SpectrumDisplayForm::newFrequencyData( const SpectrumUpdateEvent* spectrumUpdate
   }
 
   if(lastOfMultipleUpdatesFlag){
+    int tabindex = SpectrumTypeTab->currentIndex();
     if(tabindex == d_plot_fft) {
       _frequencyDisplayPlot->PlotNewData(_averagedValues, numFFTDataPoints, 
 					 _noiseFloorAmplitude, _peakFrequency, 
-					 _peakAmplitude);
+					 _peakAmplitude, d_update_time);
     }
     if(tabindex == d_plot_time) {
       _timeDomainDisplayPlot->PlotNewData(realTimeDomainDataPoints, 
 					  imagTimeDomainDataPoints, 
-					  numTimeDomainDataPoints);
+					  numTimeDomainDataPoints,
+					  d_update_time);
     }
     if(tabindex == d_plot_constellation) {
       _constellationDisplayPlot->PlotNewData(realTimeDomainDataPoints, 
 					     imagTimeDomainDataPoints, 
-					     numTimeDomainDataPoints);
+					     numTimeDomainDataPoints,
+					     d_update_time);
     }
 
     // Don't update the repeated data for the waterfall
     if(!repeatDataFlag){
       if(tabindex == d_plot_waterfall) {
 	_waterfallDisplayPlot->PlotNewData(_realFFTDataPoints, numFFTDataPoints, 
-					   timePerFFT, dataTimestamp, 
+					   d_update_time, dataTimestamp, 
 					   spectrumUpdateEvent->getDroppedFFTFrames());
       }
+      /*
       if((QGLFormat::hasOpenGL()) && (_useOpenGL)) {
 	if( _openGLWaterfall3DFlag == 1 && (tabindex == d_plot_waterfall3d)) {
 	  _waterfall3DDisplayPlot->PlotNewData(_realFFTDataPoints, numFFTDataPoints, 
-					       timePerFFT, dataTimestamp, 
+					       d_update_time, dataTimestamp, 
 					       spectrumUpdateEvent->getDroppedFFTFrames());
 	}
       }
+      */
     }
 
+    
     // Tell the system the GUI has been updated
     if(_systemSpecifiedFlag){
       _system->SetLastGUIUpdateTime(generatedTimestamp);
@@ -230,112 +252,29 @@ SpectrumDisplayForm::newFrequencyData( const SpectrumUpdateEvent* spectrumUpdate
 void
 SpectrumDisplayForm::resizeEvent( QResizeEvent *e )
 {
-  // Let the actual window resize its width, but not its height
-  QSize newSize(e->size().width(), e->oldSize().height());
-  QResizeEvent et(newSize, e->oldSize());
-  QWidget::resizeEvent(&et);
+  QSize s;
+  s.setWidth(FrequencyPlotDisplayFrame->width());
+  s.setHeight(FrequencyPlotDisplayFrame->height());
+  emit _frequencyDisplayPlot->resizeSlot(&s);
 
-  // Tell the Tab Window to Resize
-  SpectrumTypeTab->resize( e->size().width(), e->size().height()-60);
+  s.setWidth(TimeDomainDisplayFrame->width());
+  s.setHeight(TimeDomainDisplayFrame->height());
+  emit _timeDomainDisplayPlot->resizeSlot(&s);
 
-  // Tell the TabXFreqDisplay to resize
-  FrequencyPlotDisplayFrame->resize(e->size().width()-4,
-				    e->size().height()-140);
-  _frequencyDisplayPlot->resize( FrequencyPlotDisplayFrame->width()-4,
-				 e->size().height()-140);
-  
-  // Move the Power Lbl and Line Edit
-  PowerLabel->move(e->size().width()-(415-324) - PowerLabel->width(),
-		   e->size().height()-135);
-  PowerLineEdit->move(e->size().width()-(415-318) - PowerLineEdit->width(),
-		      e->size().height()-115);
-  
-  // Move the Avg Lbl and Line Edit
-  AvgLabel->move(e->size().width()-(415-406) - AvgLabel->width(),
-		 e->size().height()-135);
-  AvgLineEdit->move(e->size().width()-(415-400) - AvgLineEdit->width(),
-		    e->size().height()-115);
-  
-  // Move Max and Min check boxes
-  MaxHoldCheckBox->move(MaxHoldCheckBox->x(),
-			e->size().height()-135);
-  MaxHoldResetBtn->move(MaxHoldResetBtn->x(),
-			e->size().height()-135);
-  MinHoldCheckBox->move(MinHoldCheckBox->x(),
-			e->size().height()-115);
-  MinHoldResetBtn->move(MinHoldResetBtn->x(),
-			e->size().height()-115);
+  s.setWidth(WaterfallPlotDisplayFrame->width());
+  s.setHeight(WaterfallPlotDisplayFrame->height());
+  emit _waterfallDisplayPlot->resizeSlot(&s);
 
-  WaterfallPlotDisplayFrame->resize(e->size().width()-4,
-				    e->size().height()-140);
-  _waterfallDisplayPlot->resize( WaterfallPlotDisplayFrame->width()-4,
-				 e->size().height()-140);
-  
-  // Move the IntensityWheels and Labels
-  WaterfallMaximumIntensityLabel->move(width() - 5 -
-				       WaterfallMaximumIntensityLabel->width(),
-				       WaterfallMaximumIntensityLabel->y());
-  WaterfallMaximumIntensityWheel->resize(WaterfallMaximumIntensityLabel->x() - 5 -
-					 WaterfallMaximumIntensityWheel->x(),
-					 WaterfallMaximumIntensityWheel->height());
-  
-  WaterfallMinimumIntensityLabel->move(width() - 5 -
-				       WaterfallMinimumIntensityLabel->width(),
-				       height() - 115);
-  WaterfallMinimumIntensityWheel->resize(WaterfallMinimumIntensityLabel->x() - 5 -
-					 WaterfallMinimumIntensityWheel->x(),
-					 WaterfallMaximumIntensityWheel->height());
-  WaterfallMinimumIntensityWheel->move(WaterfallMinimumIntensityWheel->x(),
-				       height() - 115);
-  WaterfallAutoScaleBtn->move(WaterfallAutoScaleBtn->x(),
-			      e->size().height()-115);
-  
   if((QGLFormat::hasOpenGL()) && (_useOpenGL)) {
-    Waterfall3DPlotDisplayFrame->resize(e->size().width()-4,
-					e->size().height()-140);
-    _waterfall3DDisplayPlot->resize( Waterfall3DPlotDisplayFrame->width()-4,
-				     e->size().height()-140);
-
-    Waterfall3DMaximumIntensityLabel->move(width() - 5 -
-					   Waterfall3DMaximumIntensityLabel->width(),
-					   Waterfall3DMaximumIntensityLabel->y());
-    Waterfall3DMaximumIntensityWheel->resize(Waterfall3DMaximumIntensityLabel->x() - 5 -
-					     Waterfall3DMaximumIntensityWheel->x(),
-					     Waterfall3DMaximumIntensityWheel->height());
-    Waterfall3DMinimumIntensityLabel->move(width() - 5 -
-					   Waterfall3DMinimumIntensityLabel->width(),
-					   height() - 115);
-    Waterfall3DMinimumIntensityWheel->resize(Waterfall3DMinimumIntensityLabel->x() - 5 -
-					     Waterfall3DMinimumIntensityWheel->x(),
-					     Waterfall3DMaximumIntensityWheel->height());
-    Waterfall3DMinimumIntensityWheel->move(Waterfall3DMinimumIntensityWheel->x(),
-					   height() - 115);
-    Waterfall3DAutoScaleBtn->move(WaterfallAutoScaleBtn->x(),
-				  e->size().height()-115);
+    s.setWidth(Waterfall3DPlotDisplayFrame->width());
+    s.setHeight(Waterfall3DPlotDisplayFrame->height());
+    //emit _waterfall3DDisplayPlot->resizeSlot(&s);
   }
-  
-  TimeDomainDisplayFrame->resize(e->size().width()-4,
-				 e->size().height()-140);
-  _timeDomainDisplayPlot->resize( TimeDomainDisplayFrame->width()-4,
-				  e->size().height()-140);
-  
-  ConstellationDisplayFrame->resize(e->size().width()-4,
-				    e->size().height()-140);
-  _constellationDisplayPlot->resize( TimeDomainDisplayFrame->width()-4,
-				     e->size().height()-140);
-  
-  // Move the FFT Size Combobox and label
-  FFTSizeComboBox->move(width() - 5 - FFTSizeComboBox->width(),
-			height()-50);
-  FFTSizeLabel->move(width() - 10 - FFTSizeComboBox->width() - FFTSizeLabel->width(),
-		     height()-50);
-  
-  // Move the lower check and combo boxes
-  UseRFFrequenciesCheckBox->move(UseRFFrequenciesCheckBox->x(), height()-50);
-  WindowLbl->move(WindowLbl->x(), height()-25);
-  WindowComboBox->move(WindowComboBox->x(), height()-25);
-}
 
+  s.setWidth(ConstellationDisplayFrame->width());
+  s.setHeight(ConstellationDisplayFrame->height());
+  emit _constellationDisplayPlot->resizeSlot(&s);
+}
 
 void
 SpectrumDisplayForm::customEvent( QEvent * e)
@@ -345,7 +284,6 @@ SpectrumDisplayForm::customEvent( QEvent * e)
       WindowComboBox->setCurrentIndex(_system->GetWindowType());
       FFTSizeComboBox->setCurrentIndex(_system->GetFFTSizeIndex());
       //FFTSizeComboBox->setCurrentIndex(1);
-      PowerLineEdit_textChanged(PowerLineEdit->text());
     }
 
     waterfallMinimumIntensityChangedCB(WaterfallMinimumIntensityWheel->value());
@@ -357,6 +295,7 @@ SpectrumDisplayForm::customEvent( QEvent * e)
       waterfall3DMaximumIntensityChangedCB(Waterfall3DMaximumIntensityWheel->value());
       
       // Check for Hardware Acceleration of the OpenGL
+      /*
       if(!_waterfall3DDisplayPlot->format().directRendering()){
 	// Only ask this once while the program is running...
 	if(_openGLWaterfall3DFlag == -1){
@@ -369,6 +308,7 @@ SpectrumDisplayForm::customEvent( QEvent * e)
       else{
 	_openGLWaterfall3DFlag = 1;
       }
+      */
     }
     
     if(_openGLWaterfall3DFlag != 1){
@@ -401,16 +341,23 @@ SpectrumDisplayForm::customEvent( QEvent * e)
 }
 
 void
-SpectrumDisplayForm::AvgLineEdit_textChanged( const QString &valueString )
+SpectrumDisplayForm::UpdateGuiTimer()
 {
-  if(!valueString.isEmpty()){
-    int value = valueString.toInt();
-    if(value > 500){
-      value = 500;
-      AvgLineEdit->setText("500");
-    }
-    SetAverageCount(value);
-  }
+  // This is called by the displayTimer and redraws the canvases of
+  // all of the plots.
+  _frequencyDisplayPlot->canvas()->update();
+  _waterfallDisplayPlot->canvas()->update();
+  //if((QGLFormat::hasOpenGL()) && (_useOpenGL))
+  //_waterfall3DDisplayPlot->canvas()->update();
+  _timeDomainDisplayPlot->canvas()->update();
+  _constellationDisplayPlot->canvas()->update();
+}
+
+
+void
+SpectrumDisplayForm::AvgLineEdit_valueChanged( int value )
+{
+  SetAverageCount(value);
 }
 
 
@@ -449,27 +396,10 @@ SpectrumDisplayForm::MaxHoldResetBtn_clicked()
 
 
 void
-SpectrumDisplayForm::PowerLineEdit_textChanged( const QString &valueString )
+SpectrumDisplayForm::TabChanged(int index)
 {
-  if(_systemSpecifiedFlag){
-    if(!valueString.isEmpty()){
-      double value = valueString.toDouble();
-      if(value < 1.0){
-	value = 1.0;
-	PowerLineEdit->setText("1");
-      }
-      _system->SetPowerValue(value);
-    }
-
-    if(_system->GetPowerValue() > 1){
-      UseRFFrequenciesCheckBox->setChecked(false);
-      UseRFFrequenciesCheckBox->setEnabled(false);
-      UseRFFrequenciesCB(false);
-    }
-    else{
-      UseRFFrequenciesCheckBox->setEnabled(true);
-    }
-  }
+  // This might be dangerous to call this with NULL
+  resizeEvent(NULL);  
 }
 
 void
@@ -487,6 +417,7 @@ SpectrumDisplayForm::SetFrequencyRange(const double newCenterFrequency,
 
   if(fdiff > 0) {
     std::string strunits[4] = {"Hz", "kHz", "MHz", "GHz"};
+    std::string strtime[4] = {"sec", "ms", "us", "ns"};
     double units10 = floor(log10(fdiff));
     double units3  = std::max(floor(units10 / 3.0), 0.0);
     double units = pow(10, (units10-fmod(units10, 3.0)));
@@ -496,23 +427,27 @@ SpectrumDisplayForm::SetFrequencyRange(const double newCenterFrequency,
     _stopFrequency = newStopFrequency;
     _centerFrequency = newCenterFrequency;
 
-    _frequencyDisplayPlot->SetFrequencyRange(newStartFrequency,
-					     newStopFrequency,
-					     newCenterFrequency,
+    _frequencyDisplayPlot->SetFrequencyRange(_startFrequency,
+					     _stopFrequency,
+					     _centerFrequency,
 					     UseRFFrequenciesCheckBox->isChecked(),
 					     units, strunits[iunit]);
-    _waterfallDisplayPlot->SetFrequencyRange(newStartFrequency,
-					     newStopFrequency,
-					     newCenterFrequency,
+    _waterfallDisplayPlot->SetFrequencyRange(_startFrequency,
+					     _stopFrequency,
+					     _centerFrequency,
 					     UseRFFrequenciesCheckBox->isChecked(),
 					     units, strunits[iunit]);
     if((QGLFormat::hasOpenGL()) && (_useOpenGL)) {
-      _waterfall3DDisplayPlot->SetFrequencyRange(newStartFrequency,
-						 newStopFrequency,
-						 newCenterFrequency,
+      /*
+      _waterfall3DDisplayPlot->SetFrequencyRange(_startFrequency,
+						 _stopFrequency,
+						 _centerFrequency,
 						 UseRFFrequenciesCheckBox->isChecked(),
 						 units, strunits[iunit]);
+      */
     }
+    _timeDomainDisplayPlot->SetSampleRate(_stopFrequency - _startFrequency,
+					  units, strtime[iunit]);
   }
 }
 
@@ -602,7 +537,7 @@ SpectrumDisplayForm::Reset()
 
   _waterfallDisplayPlot->Reset();
   if((QGLFormat::hasOpenGL()) && (_useOpenGL)) {
-    _waterfall3DDisplayPlot->Reset();
+    //_waterfall3DDisplayPlot->Reset();
   }
 }
 
@@ -688,9 +623,11 @@ SpectrumDisplayForm::waterfall3DMaximumIntensityChangedCB( double newValue )
     else{
       Waterfall3DMaximumIntensityWheel->setValue(Waterfall3DMinimumIntensityWheel->value());
     }
-    
+
+    /*
     _waterfall3DDisplayPlot->SetIntensityRange(Waterfall3DMinimumIntensityWheel->value(),
 					       Waterfall3DMaximumIntensityWheel->value());
+    */
   }
 }
 
@@ -705,9 +642,11 @@ SpectrumDisplayForm::waterfall3DMinimumIntensityChangedCB( double newValue )
     else{
       Waterfall3DMinimumIntensityWheel->setValue(Waterfall3DMaximumIntensityWheel->value());
     }
-    
+
+    /*
     _waterfall3DDisplayPlot->SetIntensityRange(Waterfall3DMinimumIntensityWheel->value(),
 					       Waterfall3DMaximumIntensityWheel->value());
+    */
   }
 }
 
@@ -804,8 +743,10 @@ SpectrumDisplayForm::Waterfall3DIntensityColorTypeChanged( int newType )
       QMessageBox::information(this, "High Intensity Color Selection", "In the next window, select the high intensity color for the waterfall display",  QMessageBox::Ok);
       highIntensityColor = QColorDialog::getColor(highIntensityColor, this);
     }
+    /*
     _waterfall3DDisplayPlot->SetIntensityColorMapType(newType, lowIntensityColor,
 						      highIntensityColor);
+    */
   }
 }
 
@@ -844,12 +785,17 @@ void
 SpectrumDisplayForm::ToggleTabWaterfall3D(const bool state)
 {
   if(state == true) {
+    /*
     if((QGLFormat::hasOpenGL()) && (_useOpenGL)) {
       if(d_plot_waterfall3d == -1) {
 	SpectrumTypeTab->addTab(Waterfall3DPage, "3D Waterfall Display");
 	d_plot_waterfall3d = SpectrumTypeTab->count()-1;
       }
     }
+    */
+    SpectrumTypeTab->removeTab(SpectrumTypeTab->indexOf(Waterfall3DPage));
+    d_plot_waterfall3d = -1;
+    fprintf(stderr, "\nWARNING: The Waterfall3D plot has been disabled until we get it working.\n\n");
   }
   else {
     SpectrumTypeTab->removeTab(SpectrumTypeTab->indexOf(Waterfall3DPage));
@@ -902,7 +848,21 @@ SpectrumDisplayForm::SetConstellationAxis(double xmin, double xmax,
 }
 
 void
+SpectrumDisplayForm::SetConstellationPenSize(int size)
+{
+  _constellationDisplayPlot->set_pen_size( size );
+}
+
+void
 SpectrumDisplayForm::SetFrequencyAxis(double min, double max)
 {
   _frequencyDisplayPlot->set_yaxis(min, max);
+}
+
+void
+SpectrumDisplayForm::SetUpdateTime(double t)
+{
+  d_update_time = t;
+  // QTimer class takes millisecond input
+  displayTimer->start(d_update_time*1000);
 }

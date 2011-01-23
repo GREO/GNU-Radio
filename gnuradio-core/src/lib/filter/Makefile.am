@@ -148,6 +148,15 @@ powerpc_CODE = \
 powerpc_qa_CODE = \
 	qa_dotprod_powerpc.cc
 
+armv7_a_CODE = \
+	sysconfig_armv7_a.cc \
+	gr_fir_sysconfig_armv7_a.cc \
+	gr_cpu_armv7_a.cc \
+	gr_fir_fff_armv7_a.cc \
+	dotprod_fff_armv7_a.c
+
+armv7_a_qa_CODE = \
+	qa_dotprod_armv7_a.cc
 
 #
 # include each <foo>_CODE entry here...
@@ -160,7 +169,9 @@ EXTRA_libfilter_la_SOURCES =		\
 	$(x86_64_SUBCODE)		\
 	$(x86_qa_CODE)			\
 	$(powerpc_CODE)			\
-	$(powerpc_qa_CODE)
+	$(powerpc_qa_CODE)		\
+	$(armv7_a_CODE)		\
+	$(armv7_a_qa_CODE)
 
 
 EXTRA_DIST = 					\
@@ -173,6 +184,8 @@ libfilter_la_common_SOURCES = 		\
 	$(GENERATED_CC)			\
 	gr_adaptive_fir_ccf.cc		\
 	gr_cma_equalizer_cc.cc		\
+	gri_fft_filter_fff_generic.cc	\
+	gri_fft_filter_ccc_generic.cc	\
 	gr_fft_filter_ccc.cc		\
 	gr_fft_filter_fff.cc		\
 	gr_goertzel_fc.cc		\
@@ -190,7 +203,13 @@ libfilter_la_common_SOURCES = 		\
 	complex_dotprod_generic.cc	\
 	ccomplex_dotprod_generic.cc	\
 	float_dotprod_generic.c		\
-	short_dotprod_generic.c		
+	short_dotprod_generic.c		\
+	gr_pfb_channelizer_ccf.cc	\
+	gr_pfb_decimator_ccf.cc		\
+	gr_pfb_interpolator_ccf.cc	\
+	gr_pfb_arb_resampler_ccf.cc	\
+	gr_pfb_clock_sync_ccf.cc	\
+	gr_pfb_clock_sync_fff.cc
 
 libfilter_qa_la_common_SOURCES = 	\
 	qa_filter.cc			\
@@ -223,6 +242,11 @@ libfilter_la_SOURCES = $(libfilter_la_common_SOURCES) $(powerpc_CODE)
 libfilter_qa_la_SOURCES = $(libfilter_qa_la_common_SOURCES) $(powerpc_qa_CODE)
 endif
 
+if MD_CPU_armv7_a
+libfilter_la_SOURCES = $(libfilter_la_common_SOURCES) $(armv7_a_CODE)
+libfilter_qa_la_SOURCES = $(libfilter_qa_la_common_SOURCES) $(armv7_a_qa_CODE)
+endif
+
 
 grinclude_HEADERS = 			\
 	$(GENERATED_H)			\
@@ -237,6 +261,8 @@ grinclude_HEADERS = 			\
 	gr_altivec.h			\
 	gr_cma_equalizer_cc.h		\
 	gr_cpu.h			\
+	gri_fft_filter_fff_generic.h	\
+	gri_fft_filter_ccc_generic.h	\
 	gr_fft_filter_ccc.h		\
 	gr_fft_filter_fff.h		\
 	gr_filter_delay_fc.h		\
@@ -260,11 +286,18 @@ grinclude_HEADERS = 			\
 	qa_filter.h			\
 	short_dotprod_generic.h		\
 	short_dotprod_x86.h		\
-	sse_debug.h
+	sse_debug.h			\
+	gr_pfb_channelizer_ccf.h	\
+	gr_pfb_decimator_ccf.h		\
+	gr_pfb_interpolator_ccf.h	\
+	gr_pfb_arb_resampler_ccf.h	\
+	gr_pfb_clock_sync_ccf.h		\
+	gr_pfb_clock_sync_fff.h
 
 noinst_HEADERS = 			\
 	assembly.h			\
 	dotprod_fff_altivec.h		\
+	dotprod_fff_armv7_a.h		\
 	gr_fir_scc_simd.h		\
 	gr_fir_scc_x86.h		\
 	gr_fir_fcc_simd.h		\
@@ -274,6 +307,7 @@ noinst_HEADERS = 			\
 	gr_fir_ccc_simd.h		\
 	gr_fir_ccc_x86.h		\
 	gr_fir_fff_altivec.h		\
+	gr_fir_fff_armv7_a.h		\
 	gr_fir_fff_simd.h		\
 	gr_fir_fff_x86.h		\
 	gr_fir_fsf_simd.h		\
@@ -293,7 +327,7 @@ noinst_HEADERS = 			\
 	qa_gri_mmse_fir_interpolator_cc.h	
 
 
-
+if PYTHON
 swiginclude_HEADERS =			\
 	filter.i			\
 	filter_generated.i		\
@@ -309,7 +343,14 @@ swiginclude_HEADERS =			\
 	gr_iir_filter_ffd.i		\
 	gr_single_pole_iir_filter_ff.i	\
 	gr_single_pole_iir_filter_cc.i	\
+	gr_pfb_channelizer_ccf.i	\
+	gr_pfb_decimator_ccf.i		\
+	gr_pfb_interpolator_ccf.i	\
+	gr_pfb_arb_resampler_ccf.i	\
+	gr_pfb_clock_sync_ccf.i		\
+	gr_pfb_clock_sync_fff.i		\
 	$(GENERATED_I)
+endif
 
 # Do creation and inclusion of other Makefiles last
 

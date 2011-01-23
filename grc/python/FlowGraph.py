@@ -19,16 +19,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 import expr_utils
 from .. base.FlowGraph import FlowGraph as _FlowGraph
-from Block import Block
-from Connection import Connection
+from .. gui.FlowGraph import FlowGraph as _GUIFlowGraph
 import re
 
 _variable_matcher = re.compile('^(variable\w*)$')
 _parameter_matcher = re.compile('^(parameter)$')
 
-class FlowGraph(_FlowGraph):
+class FlowGraph(_FlowGraph, _GUIFlowGraph):
 
-	_eval_cache = dict()
+	def __init__(self, **kwargs):
+		_FlowGraph.__init__(self, **kwargs)
+		_GUIFlowGraph.__init__(self)
+		self._eval_cache = dict()
+
 	def _eval(self, code, namespace, namespace_hash):
 		"""
 		Evaluate the code with the given namespace.
@@ -37,6 +40,7 @@ class FlowGraph(_FlowGraph):
 		@param namespace_hash a unique hash for the namespace
 		@return the resultant object
 		"""
+		if not code: raise Exception, 'Cannot evaluate empty statement.'
 		my_hash = hash(code) ^ namespace_hash
 		#cache if does not exist
 		if not self._eval_cache.has_key(my_hash):
@@ -44,44 +48,36 @@ class FlowGraph(_FlowGraph):
 		#return from cache
 		return self._eval_cache[my_hash]
 
-	def _get_io_signature(self, pad_key):
+	def _get_io_signaturev(self, pad_key):
 		"""
-		Get an io signature for this flow graph.
+		Get a list of io signatures for this flow graph.
 		The pad key determines the directionality of the io signature.
 		@param pad_key a string of pad_source or pad_sink
-		@return a dict with: type, nports, vlen, size
+		@return a list of dicts with: type, label, vlen, size
 		"""
 		pads = filter(lambda b: b.get_key() == pad_key, self.get_enabled_blocks())
-		if not pads: return {
-			'nports': '0',
-			'type': '',
-			'vlen': '0',
-			'size': '0',
-		}
-		pad = pads[0] #take only the first, user should not have more than 1
+		sorted_pads = sorted(pads, lambda x, y: cmp(x.get_id(), y.get_id()))
 		#load io signature
-		return {
-			'nports': str(pad.get_param('nports').get_evaluated()),
+		return [{
+			'label': str(pad.get_param('label').get_evaluated()),
 			'type': str(pad.get_param('type').get_evaluated()),
 			'vlen': str(pad.get_param('vlen').get_evaluated()),
 			'size': pad.get_param('type').get_opt('size'),
-		}
+		} for pad in sorted_pads]
 
-	def get_input_signature(self):
+	def get_input_signaturev(self):
 		"""
 		Get the io signature for the input side of this flow graph.
-		The io signature with be "0", "0" if no pad source is present.
-		@return a string tuple of type, num_ports, port_size
+		@return a list of io signature structures
 		"""
-		return self._get_io_signature('pad_source')
+		return self._get_io_signaturev('pad_source')
 
-	def get_output_signature(self):
+	def get_output_signaturev(self):
 		"""
 		Get the io signature for the output side of this flow graph.
-		The io signature with be "0", "0" if no pad sink is present.
-		@return a string tuple of type, num_ports, port_size
+		@return a list of io signature structures
 		"""
-		return self._get_io_signature('pad_sink')
+		return self._get_io_signaturev('pad_sink')
 
 	def get_imports(self):
 		"""
@@ -109,6 +105,13 @@ class FlowGraph(_FlowGraph):
 		parameters = filter(lambda b: _parameter_matcher.match(b.get_key()), self.get_enabled_blocks())
 		return parameters
 
+	def rewrite(self):
+		"""
+		Flag the namespace to be renewed.
+		"""
+		self._renew_eval_ns = True
+		_FlowGraph.rewrite(self)
+
 	def evaluate(self, expr):
 		"""
 		Evaluate the expression.
@@ -116,8 +119,8 @@ class FlowGraph(_FlowGraph):
 		@throw Exception bad expression
 		@return the evaluated data
 		"""
-		if self.is_flagged():
-			self.deflag()
+		if self._renew_eval_ns:
+			self._renew_eval_ns = False
 			#reload namespace
 			n = dict()
 			#load imports

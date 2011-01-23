@@ -1,5 +1,5 @@
 #
-# Copyright 2008 Free Software Foundation, Inc.
+# Copyright 2008,2010 Free Software Foundation, Inc.
 #
 # This file is part of GNU Radio
 #
@@ -27,6 +27,8 @@ ALPHA_KEY = 'alpha'
 AUTORANGE_KEY = 'autorange'
 AVERAGE_KEY = 'average'
 AVG_ALPHA_KEY = 'avg_alpha'
+USE_PERSISTENCE_KEY = 'use_persistence'
+PERSIST_ALPHA_KEY = 'persist_alpha'
 BASEBAND_FREQ_KEY = 'baseband_freq'
 BETA_KEY = 'beta'
 COLOR_MODE_KEY = 'color_mode'
@@ -41,6 +43,8 @@ MSG_KEY = 'msg'
 NUM_LINES_KEY = 'num_lines'
 OMEGA_KEY = 'omega'
 PEAK_HOLD_KEY = 'peak_hold'
+TRACE_STORE_KEY = 'trace_store'
+TRACE_SHOW_KEY = 'trace_show'
 REF_LEVEL_KEY = 'ref_level'
 RUNNING_KEY = 'running'
 SAMPLE_RATE_KEY = 'sample_rate'
@@ -67,3 +71,4 @@ MINIMUM_KEY = 'minimum'
 NUM_BINS_KEY = 'num_bins'
 FRAME_SIZE_KEY = 'frame_size'
 CHANNEL_OPTIONS_KEY = 'channel_options'
+SHOW_CONTROL_PANEL_KEY = 'show_control_panel'

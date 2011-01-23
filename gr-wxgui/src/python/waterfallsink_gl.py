@@ -1,5 +1,5 @@
 #
-# Copyright 2008 Free Software Foundation, Inc.
+# Copyright 2008,2009 Free Software Foundation, Inc.
 #
 # This file is part of GNU Radio
 #
@@ -31,7 +31,7 @@ from constants import *
 ##################################################
 # Waterfall sink block (wrapper for old wxgui)
 ##################################################
-class _waterfall_sink_base(gr.hier_block2):
+class _waterfall_sink_base(gr.hier_block2, common.wxgui_hb):
 	"""
 	An fft block with real/complex inputs and a gui window.
 	"""
@@ -51,6 +51,7 @@ class _waterfall_sink_base(gr.hier_block2):
 		ref_scale=2.0,
 		dynamic_range=80,
 		num_lines=256,
+		win=None,
 		**kwargs #do not end with a comma
 	):
 		#ensure avg alpha
@@ -70,11 +71,10 @@ class _waterfall_sink_base(gr.hier_block2):
 			ref_scale=ref_scale,
 			avg_alpha=avg_alpha,
 			average=average,
+			win=win,
 		)
 		msgq = gr.msg_queue(2)
 		sink = gr.message_sink(gr.sizeof_float*fft_size, msgq, True)
-		#connect
-		self.connect(self, fft, sink)
 		#controller
 		self.controller = pubsub()
 		self.controller.subscribe(AVERAGE_KEY, fft.set_average)
@@ -110,6 +110,8 @@ class _waterfall_sink_base(gr.hier_block2):
 		)
 		common.register_access_methods(self, self.win)
 		setattr(self.win, 'set_baseband_freq', getattr(self, 'set_baseband_freq')) #BACKWARDS
+		#connect
+		self.wxgui_connect(self, fft, sink)
 
 class waterfall_sink_f(_waterfall_sink_base):
 	_fft_chain = blks2.logpwrfft_f

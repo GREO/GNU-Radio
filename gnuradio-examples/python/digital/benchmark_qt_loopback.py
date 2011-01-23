@@ -52,7 +52,7 @@ class dialog_box(QtGui.QMainWindow):
         self.set_frequency(self.fg.frequency_offset())
         self.set_time_offset(self.fg.timing_offset())
 
-        self.set_gain_mu(self.fg.rx_gain_mu())
+        self.set_gain_mu(self.fg.rx_timing_gain_alpha())
         self.set_alpha(self.fg.rx_alpha())
 
         # Add the qtsnk widgets to the hlayout box
@@ -158,7 +158,7 @@ class dialog_box(QtGui.QMainWindow):
     def gainMuEditText(self):
         try:
             gain = self.gui.gainMuEdit.text().toDouble()[0]
-            self.fg.set_rx_gain_mu(gain)
+            self.fg.set_rx_timing_gain_alpha(gain)
         except RuntimeError:
             pass
 
@@ -167,7 +167,10 @@ class dialog_box(QtGui.QMainWindow):
         # Pull these globals in from the main thread
         global n_rcvd, n_right, pktno
 
-        per = float(n_rcvd - n_right)/float(pktno)
+        if(pktno > 0):
+            per = float(n_rcvd - n_right)/float(pktno)
+        else:
+            per = 0
         self.gui.pktsRcvdEdit.setText(QtCore.QString("%1").arg(n_rcvd))
         self.gui.pktsCorrectEdit.setText(QtCore.QString("%1").arg(n_right))
         self.gui.perEdit.setText(QtCore.QString("%1").arg(per))
@@ -186,6 +189,9 @@ class my_top_block(gr.top_block):
 
         self._sample_rate = options.sample_rate
 
+        if(options.samples_per_symbol is None):
+            options.samples_per_symbol = 2
+
         channelon = True;
 
         self.gui_on = options.gui
@@ -202,7 +208,7 @@ class my_top_block(gr.top_block):
         self.rxpath = receive_path(demod_class, rx_callback, options)
 
         # FIXME: do better exposure to lower issues for control
-        self._gain_mu = self.rxpath.packet_receiver._demodulator._mm_gain_mu
+        self._timing_gain_alpha = self.rxpath.packet_receiver._demodulator._mm_gain_mu
         self._alpha = self.rxpath.packet_receiver._demodulator._costas_alpha
 
         if channelon:
@@ -229,10 +235,10 @@ class my_top_block(gr.top_block):
                 fftsize = 2048
 
                 self.snk_tx = qtgui.sink_c(fftsize, gr.firdes.WIN_BLACKMAN_hARRIS,
-                                           0, 1,
+                                           0, self._sample_rate,
                                            "Tx", True, True, False, True, True)
                 self.snk_rx = qtgui.sink_c(fftsize, gr.firdes.WIN_BLACKMAN_hARRIS,
-                                           0, 1,
+                                           0, self._sample_rate,
                                            "Rx", True, True, False, True, True)
 
                 self.snk_tx.set_frequency_axis(-80, 0)
@@ -241,15 +247,17 @@ class my_top_block(gr.top_block):
                 # Connect to the QT sinks
                 # FIXME: make better exposure to receiver from rxpath
                 self.receiver = self.rxpath.packet_receiver._demodulator.receiver
+                self.receiver.set_alpha(2)
+                self.receiver.set_beta(0.02)
                 self.connect(self.channel, self.snk_tx)
                 self.connect(self.receiver, self.snk_rx)
 
                 pyTxQt  = self.snk_tx.pyqwidget()
                 pyTx = sip.wrapinstance(pyTxQt, QtGui.QWidget)
-                
+                 
                 pyRxQt  = self.snk_rx.pyqwidget()
                 pyRx = sip.wrapinstance(pyRxQt, QtGui.QWidget)
-                
+
                 self.main_box = dialog_box(pyTx, pyRx, self)
                 self.main_box.show()
                 
@@ -279,7 +287,7 @@ class my_top_block(gr.top_block):
     def get_noise_voltage(self, SNR):
         snr = 10.0**(SNR/10.0)        
         power_in_signal = abs(self._tx_amplitude)**2
-        noise_power = power_in_signal/SNR
+        noise_power = power_in_signal/snr
         noise_voltage = math.sqrt(noise_power)
         return noise_voltage
 
@@ -299,17 +307,15 @@ class my_top_block(gr.top_block):
 
 
     # Receiver Parameters
-    def rx_gain_mu(self):
-        return self._gain_mu
+    def rx_timing_gain_alpha(self):
+        return self._timing_gain_alpha
 
-    def rx_gain_omega(self):
-        return self.gain_omega
+    def rx_timing_gain_beta(self):
+        return self._timing_gain_beta
     
-    def set_rx_gain_mu(self, gain):
-        self._gain_mu = gain
-        self.gain_omega = .25 * self._gain_mu * self._gain_mu
-        self.receiver.set_gain_mu(self._gain_mu)
-        self.receiver.set_gain_omega(self.gain_omega)
+    def set_rx_timing_gain_alpha(self, gain):
+        self._timing_gain_alpha = gain
+        self.receiver.set_gain_mu(self._timing_gain_alpha)
 
     def rx_alpha(self):
         return self._alpha

@@ -1377,7 +1377,7 @@ class app_flow_graph(stdgui2.std_top_block):
 			self.cardtype = self.u.daughterboard_id()
 
 def main ():
-	app = stdgui2.stdapp(app_flow_graph, "RADIO ASTRONOMY SPECTRAL/CONTINUUM RECEIVER: $Revision: 10631 $", nstatus=1)
+	app = stdgui2.stdapp(app_flow_graph, "RADIO ASTRONOMY SPECTRAL/CONTINUUM RECEIVER: $Revision$", nstatus=1)
 	app.MainLoop()
 
 if __name__ == '__main__':

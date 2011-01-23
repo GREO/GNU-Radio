@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 /*
- * Copyright 2004,2005,2006,2007,2008 Free Software Foundation, Inc.
+ * Copyright 2004,2005,2006,2007,2008,2009 Free Software Foundation, Inc.
  * 
  * This file is part of GNU Radio
  * 
@@ -80,7 +80,6 @@
 #include <gr_threshold_ff.h>
 #include <gr_clock_recovery_mm_ff.h>
 #include <gr_clock_recovery_mm_cc.h>
-#include <gr_dd_mpsk_sync_cc.h>
 #include <gr_packet_sink.h>
 #include <gr_lms_dfe_cc.h>
 #include <gr_lms_dfe_ff.h>
@@ -105,7 +104,7 @@
 #include <gr_pa_2x2_phase_combiner.h>
 #include <gr_kludge_copy.h>
 #include <gr_prefs.h>
-#include <gr_prefix.h>
+#include <gr_constants.h>
 #include <gr_test_types.h>
 #include <gr_test.h>
 #include <gr_unpack_k_bits_bb.h>
@@ -139,7 +138,9 @@
 #include <gr_stretch_ff.h>
 #include <gr_wavelet_ff.h>
 #include <gr_wvps_ff.h>
-
+#include <gr_copy.h>
+#include <gr_fll_band_edge_cc.h>
+#include <gr_additive_scrambler_bb.h>
 %}
 
 %include "gr_nop.i"
@@ -200,7 +201,6 @@
 %include "gr_threshold_ff.i"
 %include "gr_clock_recovery_mm_ff.i"
 %include "gr_clock_recovery_mm_cc.i"
-%include "gr_dd_mpsk_sync_cc.i"
 %include "gr_packet_sink.i"
 %include "gr_lms_dfe_cc.i"
 %include "gr_lms_dfe_ff.i"
@@ -225,7 +225,7 @@
 %include "gr_pa_2x2_phase_combiner.i"
 %include "gr_kludge_copy.i"
 %include "gr_prefs.i"
-%include "gr_prefix.i"
+%include "gr_constants.i"
 %include "gr_test_types.h"
 %include "gr_test.i"
 %include "gr_unpack_k_bits_bb.i"
@@ -259,3 +259,6 @@
 %include "gr_stretch_ff.i"
 %include "gr_wavelet_ff.i"
 %include "gr_wvps_ff.i"
+%include "gr_copy.i"
+%include "gr_fll_band_edge_cc.i"
+%include "gr_additive_scrambler_bb.i"

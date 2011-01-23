@@ -39,7 +39,6 @@ libio_la_SOURCES = 			\
 	gr_oscope_guts.cc		\
 	gr_oscope_sink_f.cc		\
 	gr_oscope_sink_x.cc		\
-	gri_logger.cc			\
 	i2c.cc				\
 	i2c_bitbang.cc			\
 	i2c_bbio.cc			\
@@ -72,7 +71,6 @@ grinclude_HEADERS = 			\
 	gr_oscope_sink_f.h		\
 	gr_oscope_sink_x.h		\
 	gr_trigger_mode.h		\
-	gri_logger.h			\
 	i2c.h				\
 	i2c_bitbang.h			\
 	i2c_bbio.h			\
@@ -93,9 +91,7 @@ grinclude_HEADERS = 			\
 	gr_wavfile_sink.h               \
 	gri_wavfile.h
 
-
-
-
+if PYTHON
 swiginclude_HEADERS =			\
 	io.i				\
 	gr_file_sink.i			\
@@ -116,4 +112,4 @@ swiginclude_HEADERS =			\
 	gr_udp_source.i                 \
 	gr_wavfile_source.i             \
 	gr_wavfile_sink.i
-
+endif

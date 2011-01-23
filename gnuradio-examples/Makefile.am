@@ -1,5 +1,5 @@
 #
-# Copyright 2004,2007 Free Software Foundation, Inc.
+# Copyright 2004,2007,2009 Free Software Foundation, Inc.
 # 
 # This file is part of GNU Radio
 # 
@@ -21,4 +21,7 @@
 
 include $(top_srcdir)/Makefile.common
 
-SUBDIRS = python c++
+SUBDIRS = c++
+if PYTHON
+SUBDIRS += python grc
+endif

@@ -32,5 +32,6 @@ SUBDIRS = \
 	multi_usrp \
 	network \
 	ofdm \
+	pfb \
 	usrp \
 	usrp2

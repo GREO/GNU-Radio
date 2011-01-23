@@ -64,6 +64,8 @@ bool xcvr2450_set_freq(struct db_base *db, u2_fxpt_freq_t freq, u2_fxpt_freq_t *
 bool xcvr2450_set_gain_rx(struct db_base *db, u2_fxpt_gain_t gain);
 bool xcvr2450_set_gain_tx(struct db_base *db, u2_fxpt_gain_t gain);
 bool xcvr2450_set_tx_enable(struct db_base *db, bool on);
+bool xcvr2450_set_rx_antenna(struct db_base *db, int ant);
+bool xcvr2450_set_tx_antenna(struct db_base *db, int ant);
 
 struct db_xcvr2450_common {
   int d_mimo, d_int_div, d_frac_div, d_highband, d_five_gig;
@@ -154,6 +156,7 @@ struct db_xcvr2450_rx db_xcvr2450_rx = {
   .base.atr_mask = RX_ATR_MASK,
   .base.atr_txval = 0x0,
   .base.atr_rxval = 0x0,
+  .base.set_antenna = xcvr2450_set_rx_antenna,
   .common = &db_xcvr2450_common,
 };
 
@@ -178,6 +181,7 @@ struct db_xcvr2450_tx db_xcvr2450_tx = {
   .base.atr_mask = TX_ATR_MASK,
   .base.atr_txval = 0x0,
   .base.atr_rxval = 0x0,
+  .base.set_antenna = xcvr2450_set_tx_antenna,
   .common = &db_xcvr2450_common,
 };
 
@@ -250,8 +254,8 @@ static void
 set_reg_lpf(struct db_xcvr2450_dummy *db){
   int reg_lpf = (
     (db->common->d_rssi_hbw<<15)  |
-    (db->common->d_txlpf_bw<<10)  |
-    (db->common->d_rxlpf_bw<<9)   |
+    (db->common->d_txlpf_bw<<9)  |
+    (db->common->d_rxlpf_bw<<7)   |
     (db->common->d_rxlpf_fine<<4) | 7);
   send_reg(reg_lpf);
 }
@@ -493,4 +497,25 @@ xcvr2450_set_tx_enable(struct db_base *dbb, bool on){
   db->common->d_tx_enb = on;
   set_gpio(db);
   return true;
+}
+
+/**************************************************
+ * Set Antennas
+ **************************************************/
+bool xcvr2450_set_rx_antenna(struct db_base *dbb, int ant){
+    printf("xcvr set rx ant %d\n", ant);
+    if (ant > 1) return false;
+    struct db_xcvr2450_dummy *db = (struct db_xcvr2450_dummy *) dbb;
+    db->common->d_rx_ant = ant;
+    set_gpio(db);
+    return true;
+}
+
+bool xcvr2450_set_tx_antenna(struct db_base *dbb, int ant){
+    printf("xcvr set tx ant %d\n", ant);
+    if (ant > 1) return false;
+    struct db_xcvr2450_dummy *db = (struct db_xcvr2450_dummy *) dbb;
+    db->common->d_tx_ant = ant;
+    set_gpio(db);
+    return true;
 }

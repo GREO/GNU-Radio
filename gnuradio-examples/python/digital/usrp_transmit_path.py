@@ -20,7 +20,7 @@
 # 
 
 from gnuradio import gr
-import usrp_options
+from gnuradio import usrp_options
 import transmit_path
 from pick_bitrate import pick_tx_bitrate
 from gnuradio import eng_notation
@@ -58,16 +58,19 @@ class usrp_transmit_path(gr.hier_block2):
         if options.tx_freq is None:
             sys.stderr.write("-f FREQ or --freq FREQ or --tx-freq FREQ must be specified\n")
             raise SystemExit
+
+        #setup usrp
+        self._modulator_class = modulator_class
+        self._setup_usrp_sink(options)
+
         tx_path = transmit_path.transmit_path(modulator_class, options)
         for attr in dir(tx_path): #forward the methods
             if not attr.startswith('_') and not hasattr(self, attr):
                 setattr(self, attr, getattr(tx_path, attr))
-        #setup usrp
-        self._modulator_class = modulator_class
-        self._setup_usrp_sink(options)
+
         #connect
         self.connect(tx_path, self.u)
-
+        
     def _setup_usrp_sink(self, options):
         """
         Creates a USRP sink, determines the settings for best bitrate,
@@ -75,13 +78,21 @@ class usrp_transmit_path(gr.hier_block2):
         """
         self.u = usrp_options.create_usrp_sink(options)
         dac_rate = self.u.dac_rate()
+        self.rs_rate = options.bitrate    # Store requested bit rate
+            
+        (self._bitrate, self._samples_per_symbol, self._interp) = \
+                        pick_tx_bitrate(options.bitrate, self._modulator_class.bits_per_symbol(),
+                                        options.samples_per_symbol, options.interp,
+                                        dac_rate, self.u.get_interp_rates())
+
+        options.interp = self._interp
+        options.samples_per_symbol = self._samples_per_symbol
+        options.bitrate = self._bitrate
+
         if options.verbose:
             print 'USRP Sink:', self.u
-        (self._bitrate, self._samples_per_symbol, self._interp) = \
-                        pick_tx_bitrate(options.bitrate, self._modulator_class.bits_per_symbol(), \
-                                        options.samples_per_symbol, options.interp, dac_rate, \
-                                        self.u.get_interp_rates())
-
+            print "Interpolation Rate: ", self._interp
+        
         self.u.set_interp(self._interp)
         self.u.set_auto_tr(True)
 

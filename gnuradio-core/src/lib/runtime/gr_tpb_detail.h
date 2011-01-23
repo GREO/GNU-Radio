@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 /*
- * Copyright 2008 Free Software Foundation, Inc.
+ * Copyright 2008,2009 Free Software Foundation, Inc.
  * 
  * This file is part of GNU Radio
  * 
@@ -21,7 +21,9 @@
 #ifndef INCLUDED_GR_TPB_DETAIL_H
 #define INCLUDED_GR_TPB_DETAIL_H
 
-#include <boost/thread.hpp>
+#include <gruel/thread.h>
+#include <deque>
+#include <gruel/pmt.h>
 
 class gr_block_detail;
 
@@ -29,17 +31,19 @@ class gr_block_detail;
  * \brief used by thread-per-block scheduler
  */
 struct gr_tpb_detail {
-  typedef boost::unique_lock<boost::mutex>  scoped_lock;
 
-  boost::mutex			mutex;			//< protects all vars
+  gruel::mutex			mutex;			//< protects all vars
   bool				input_changed;
-  boost::condition_variable	input_cond;
+  gruel::condition_variable	input_cond;
   bool				output_changed;
-  boost::condition_variable	output_cond;
+  gruel::condition_variable	output_cond;
 
+private:
+  std::deque<pmt::pmt_t>	msg_queue;
+
+public:
   gr_tpb_detail()
-    : input_changed(false), output_changed(false) {}
-
+    : input_changed(false), output_changed(false) { }
 
   //! Called by us to tell all our upstream blocks that their output may have changed.
   void notify_upstream(gr_block_detail *d);
@@ -53,17 +57,34 @@ struct gr_tpb_detail {
   //! Called by us
   void clear_changed()
   {
-    scoped_lock	guard(mutex);
+    gruel::scoped_lock guard(mutex);
     input_changed = false;
     output_changed = false;
   }
+  
+  //! is the queue empty?
+  bool empty_p() const { return msg_queue.empty(); }
+
+  //| Acquires and release the mutex	
+  void insert_tail(pmt::pmt_t msg);
+
+  /*!
+   * \returns returns pmt at head of queue or pmt_t() if empty.
+   */
+  pmt::pmt_t delete_head_nowait();
+
+  /*!
+   * \returns returns pmt at head of queue or pmt_t() if empty.
+   * Caller must already be holding the mutex
+   */
+  pmt::pmt_t delete_head_nowait_already_holding_mutex();
 
 private:
 
   //! Used by notify_downstream
   void set_input_changed()
   {
-    scoped_lock	guard(mutex);
+    gruel::scoped_lock guard(mutex);
     input_changed = true;
     input_cond.notify_one();
   }
@@ -71,7 +92,7 @@ private:
   //! Used by notify_upstream
   void set_output_changed()
   {
-    scoped_lock	guard(mutex);
+    gruel::scoped_lock guard(mutex);
     output_changed = true;
     output_cond.notify_one();
   }

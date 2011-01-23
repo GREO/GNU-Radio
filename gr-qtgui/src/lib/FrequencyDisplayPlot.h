@@ -30,7 +30,7 @@ public:
 
   void PlotNewData(const double* dataPoints, const int64_t numDataPoints,
 		   const double noiseFloorAmplitude, const double peakFrequency,
-		   const double peakAmplitude);
+		   const double peakAmplitude, const double timeInterval);
   
   void ClearMaxData();
   void ClearMinData();
@@ -43,12 +43,14 @@ public:
   void set_yaxis(double min, double max);
 
 public slots:
+  void resizeSlot( QSize *e );
   void SetLowerIntensityLevel(const double);
   void SetUpperIntensityLevel(const double);
 
 protected:
 
 private:
+
   void _resetXAxisPoints();
   
   double _startFrequency;
@@ -84,8 +86,6 @@ private:
   timespec _lastReplot;
 
   bool _useCenterFrequencyFlag;
-
-  double _displayIntervalTime;
 };
 
 #endif /* FREQUENCY_DISPLAY_PLOT_HPP */

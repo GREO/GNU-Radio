@@ -45,13 +45,13 @@ extern struct db_base db_rfx_1800_tx;
 extern struct db_base db_rfx_1800_rx;
 extern struct db_base db_rfx_2400_tx;
 extern struct db_base db_rfx_2400_rx;
+extern struct db_base db_wbxng_rx;
+extern struct db_base db_wbxng_tx;
 extern struct db_base db_tvrx1;
 extern struct db_base db_tvrx2;
 extern struct db_base db_tvrx3;
 extern struct db_base db_dbsrx;
-
-extern struct db_base db_xcvr2450_tx;
-extern struct db_base db_xcvr2450_rx;
+extern struct db_base db_bitshark_rx;
 
 struct db_base *all_dboards[] = {
   &db_basic_tx,
@@ -69,11 +69,12 @@ struct db_base *all_dboards[] = {
   &db_rfx_2400_tx,
   &db_rfx_2400_rx,
   &db_tvrx1,
+#if 0
   &db_tvrx2,
+#endif
   &db_tvrx3,
   &db_dbsrx,
-  &db_xcvr2450_tx,
-  &db_xcvr2450_rx,
+  &db_bitshark_rx,
   0
 };
 
@@ -423,4 +424,11 @@ bool
 db_set_gain(struct db_base *db, u2_fxpt_gain_t gain)
 {
   return db->set_gain(db, gain);
+}
+
+bool
+db_set_antenna(struct db_base *db, int ant)
+{
+  if (db->set_antenna == 0) return false;
+  return db->set_antenna(db, ant);
 }

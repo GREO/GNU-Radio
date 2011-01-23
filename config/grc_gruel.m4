@@ -1,4 +1,4 @@
-dnl Copyright 2001,2002,2003,2004,2005,2006,2008 Free Software Foundation, Inc.
+dnl Copyright 2001,2002,2003,2004,2005,2006,2008,2009 Free Software Foundation, Inc.
 dnl 
 dnl This file is part of GNU Radio
 dnl 
@@ -25,6 +25,10 @@ AC_DEFUN([GRC_GRUEL],[
     dnl   with : if the --with code didn't error out
     dnl   yes  : if the --enable code passed muster and all dependencies are met
     dnl   no   : otherwise
+    if test $passed = yes; then
+	dnl Don't do gruel if guile not available
+	GRC_CHECK_GUILE(gruel)
+    fi
     if test $passed != with; then
 	dnl how and where to find INCLUDES and LA and such
 	gruel_INCLUDES="\
@@ -42,6 +46,10 @@ AC_DEFUN([GRC_GRUEL],[
         gruel/src/include/gruel/Makefile \
 	gruel/src/include/gruel/inet.h \
         gruel/src/lib/Makefile \
+	gruel/src/lib/pmt/Makefile \
+	gruel/src/lib/msg/Makefile \
+	gruel/src/scheme/Makefile \
+	gruel/src/scheme/gnuradio/Makefile \
     ])
 
     dnl Allow creating autoconf independent header files for bytesex routines

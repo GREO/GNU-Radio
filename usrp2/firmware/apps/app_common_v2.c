@@ -31,6 +31,7 @@
 #include "clocks.h"
 #include "u2_init.h"
 #include <string.h>
+#include "usrp2_i2c_addr.h"
 
 volatile bool link_is_up = false;	// eth handler sets this
 int cpu_tx_buf_dest_port = PORT_ETH;
@@ -70,6 +71,7 @@ void
 set_reply_hdr(u2_eth_packet_t *reply_pkt, u2_eth_packet_t const *cmd_pkt)
 {
   reply_pkt->ehdr.dst = cmd_pkt->ehdr.src;
+  reply_pkt->ehdr.src = *ethernet_mac_addr();
   reply_pkt->ehdr.ethertype = U2_ETHERTYPE;
   reply_pkt->thdr.flags = 0;
   reply_pkt->thdr.fifo_status = 0;	// written by protocol engine
@@ -151,7 +153,7 @@ config_tx_v2_cmd(const op_config_tx_v2_t *p,
   memset(&tune_result, 0, sizeof(tune_result));
 
   bool ok = true;
-  
+
   if (p->valid & CFGV_GAIN){
     ok &= db_set_gain(tx_dboard, p->gain);
   }
@@ -160,7 +162,7 @@ config_tx_v2_cmd(const op_config_tx_v2_t *p,
     bool was_streaming = is_streaming();
     if (was_streaming)
       stop_rx_cmd();
-    
+
     u2_fxpt_freq_t f = u2_fxpt_freq_from_hilo(p->freq_hi, p->freq_lo);
     bool tune_ok = db_tune(tx_dboard, f, &tune_result);
     ok &= tune_ok;
@@ -184,7 +186,7 @@ config_tx_v2_cmd(const op_config_tx_v2_t *p,
       hb1 = 1;
       interp = interp >> 1;
     }
-    
+
     if (interp < MIN_CIC_INTERP || interp > MAX_CIC_INTERP)
       ok = false;
     else {
@@ -214,7 +216,7 @@ config_tx_v2_cmd(const op_config_tx_v2_t *p,
 }
 
 static size_t
-config_rx_v2_cmd(const op_config_rx_v2_t *p, 
+config_rx_v2_cmd(const op_config_rx_v2_t *p,
 		 void *reply_payload, size_t reply_payload_space)
 {
   op_config_rx_reply_v2_t *r = (op_config_rx_reply_v2_t *) reply_payload;
@@ -225,7 +227,7 @@ config_rx_v2_cmd(const op_config_rx_v2_t *p,
   memset(&tune_result, 0, sizeof(tune_result));
 
   bool ok = true;
-  
+
   if (p->valid & CFGV_GAIN){
     ok &= db_set_gain(rx_dboard, p->gain);
   }
@@ -234,7 +236,7 @@ config_rx_v2_cmd(const op_config_rx_v2_t *p,
     bool was_streaming = is_streaming();
     if (was_streaming)
       stop_rx_cmd();
-    
+
     u2_fxpt_freq_t f = u2_fxpt_freq_from_hilo(p->freq_hi, p->freq_lo);
     bool tune_ok = db_tune(rx_dboard, f, &tune_result);
     ok &= tune_ok;
@@ -248,17 +250,17 @@ config_rx_v2_cmd(const op_config_rx_v2_t *p,
     int decim = p->decim;
     int hb1 = 0;
     int hb2 = 0;
-    
+
     if(!(decim & 1)) {
       hb2 = 1;
       decim = decim >> 1;
     }
-    
+
     if(!(decim & 1)) {
       hb1 = 1;
       decim = decim >> 1;
     }
-    
+
     if (decim < MIN_CIC_DECIM || decim > MAX_CIC_DECIM)
       ok = false;
     else {
@@ -293,7 +295,7 @@ read_time_cmd(const op_generic_t *p,
 	      void *reply_payload, size_t reply_payload_space)
 {
   op_read_time_reply_t *r = (op_read_time_reply_t *) reply_payload;
-  if (reply_payload_space < sizeof(*r))		
+  if (reply_payload_space < sizeof(*r))
     return 0;					// no room
 
   r->opcode = OP_READ_TIME_REPLY;
@@ -307,7 +309,7 @@ read_time_cmd(const op_generic_t *p,
 static void
 fill_db_info(u2_db_info_t *p, const struct db_base *db)
 {
-  p->dbid = db->dbid;
+  //p->dbid = db->dbid;
   p->freq_min_hi = u2_fxpt_freq_hi(db->freq_min);
   p->freq_min_lo = u2_fxpt_freq_lo(db->freq_min);
   p->freq_max_hi = u2_fxpt_freq_hi(db->freq_max);
@@ -322,7 +324,7 @@ dboard_info_cmd(const op_generic_t *p,
 		void *reply_payload, size_t reply_payload_space)
 {
   op_dboard_info_reply_t *r = (op_dboard_info_reply_t *) reply_payload;
-  if (reply_payload_space < sizeof(*r))		
+  if (reply_payload_space < sizeof(*r))
     return 0;					// no room
 
   r->opcode = OP_DBOARD_INFO_REPLY;
@@ -332,6 +334,9 @@ dboard_info_cmd(const op_generic_t *p,
 
   fill_db_info(&r->tx_db_info, tx_dboard);
   fill_db_info(&r->rx_db_info, rx_dboard);
+
+  r->tx_db_info.dbid = read_dboard_eeprom(I2C_ADDR_TX_A);
+  r->rx_db_info.dbid = read_dboard_eeprom(I2C_ADDR_RX_A);
 
   return r->len;
 }
@@ -410,14 +415,14 @@ generic_reply(const op_generic_t *p,
 	      bool ok)
 {
   op_generic_t *r = (op_generic_t *) reply_payload;
-  if (reply_payload_space < sizeof(*r))		
+  if (reply_payload_space < sizeof(*r))
     return 0;					// no room
-  
+
   r->opcode = p->opcode | OP_REPLY_BIT;
   r->len = sizeof(*r);
   r->rid = p->rid;
   r->ok = ok;
-  
+
   return r->len;
 }
 
@@ -425,14 +430,14 @@ static size_t
 add_eop(void *reply_payload, size_t reply_payload_space)
 {
   op_generic_t *r = (op_generic_t *) reply_payload;
-  if (reply_payload_space < sizeof(*r))		
+  if (reply_payload_space < sizeof(*r))
     return 0;					// no room
-  
+
   r->opcode = OP_EOP;
   r->len = sizeof(*r);
   r->rid = 0;
   r->ok =  0;
-  
+
   return r->len;
 }
 
@@ -442,15 +447,15 @@ handle_control_chan_frame(u2_eth_packet_t *pkt, size_t len)
   unsigned char reply[sizeof(u2_eth_packet_t) + 4 * sizeof(u2_subpkt_t)] _AL4;
   unsigned char *reply_payload = &reply[sizeof(u2_eth_packet_t)];
   int reply_payload_space = sizeof(reply) - sizeof(u2_eth_packet_t);
-  
+
   // initialize reply
   memset(reply, 0, sizeof(reply));
   set_reply_hdr((u2_eth_packet_t *) reply, pkt);
-  
+
   // point to beginning of payload (subpackets)
   unsigned char *payload = ((unsigned char *) pkt) + sizeof(u2_eth_packet_t);
   int payload_len = len - sizeof(u2_eth_packet_t);
-  
+
   size_t subpktlen = 0;
   bool ok = false;
 
@@ -467,7 +472,7 @@ handle_control_chan_frame(u2_eth_packet_t *pkt, size_t len)
     case OP_ID:
       subpktlen = op_id_cmd(gp, reply_payload, reply_payload_space);
       break;
-    
+
     case OP_CONFIG_TX_V2:
       subpktlen = config_tx_v2_cmd((op_config_tx_v2_t *) payload, reply_payload, reply_payload_space);
       break;
@@ -477,15 +482,26 @@ handle_control_chan_frame(u2_eth_packet_t *pkt, size_t len)
       break;
 
     case OP_START_RX_STREAMING:
-      start_rx_streaming_cmd(&pkt->ehdr.src, (op_start_rx_streaming_t *) payload);
+      if (pkt->fixed.timestamp == -1) // Start now (default)
+        start_rx_streaming_cmd(&pkt->ehdr.src, (op_start_rx_streaming_t *) payload);
+      else
+        start_rx_streaming_at_cmd(&pkt->ehdr.src, (op_start_rx_streaming_t *)payload, pkt->fixed.timestamp);
       ok = true;
       goto generic_reply;
-    
+
     case OP_STOP_RX:
       stop_rx_cmd();
       ok = true;
       goto generic_reply;
-    
+
+    case OP_RX_ANTENNA:
+        ok = db_set_antenna(rx_dboard, ((op_config_mimo_t *)payload)->flags);
+        goto generic_reply;
+
+    case OP_TX_ANTENNA:
+        ok = db_set_antenna(tx_dboard, ((op_config_mimo_t *)payload)->flags);
+        goto generic_reply;
+
     case OP_BURN_MAC_ADDR:
       ok = ethernet_set_mac_addr(&((op_burn_mac_addr_t *)payload)->addr);
       goto generic_reply;
@@ -531,8 +547,8 @@ handle_control_chan_frame(u2_eth_packet_t *pkt, size_t len)
 
     case OP_GPIO_SET_DDR:
       ok = true;
-      hal_gpio_set_ddr(((op_gpio_t *)payload)->bank, 
-		       ((op_gpio_t *)payload)->value, 
+      hal_gpio_set_ddr(((op_gpio_t *)payload)->bank,
+		       ((op_gpio_t *)payload)->value,
 		       ((op_gpio_t *)payload)->mask);
       goto generic_reply;
 
@@ -548,8 +564,8 @@ handle_control_chan_frame(u2_eth_packet_t *pkt, size_t len)
 
     case OP_GPIO_WRITE:
       ok = true;
-      hal_gpio_write(((op_gpio_t *)payload)->bank, 
-		     ((op_gpio_t *)payload)->value, 
+      hal_gpio_write(((op_gpio_t *)payload)->bank,
+		     ((op_gpio_t *)payload)->value,
 		     ((op_gpio_t *)payload)->mask);
       goto generic_reply;
 
@@ -599,7 +615,7 @@ bool
 eth_pkt_inspector(dbsm_t *sm, int bufno)
 {
   u2_eth_packet_t *pkt = (u2_eth_packet_t *) buffer_ram(bufno);
-  size_t byte_len = (buffer_pool_status->last_line[bufno] - 3) * 4;
+  size_t byte_len = (buffer_pool_status->last_line[bufno] - 1) * 4;
 
   //static size_t last_len = 0;
 

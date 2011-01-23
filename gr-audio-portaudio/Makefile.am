@@ -23,5 +23,8 @@ include $(top_srcdir)/Makefile.common
 
 SUBDIRS = src
 
-etcdir = $(gr_sysconfdir)
+pkgconfigdir = $(libdir)/pkgconfig
+dist_pkgconfig_DATA = gnuradio-audio-portaudio.pc
+
+etcdir = $(gr_prefsdir)
 dist_etc_DATA = gr-audio-portaudio.conf

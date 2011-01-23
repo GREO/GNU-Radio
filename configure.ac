@@ -1,4 +1,4 @@
-dnl Copyright 2001,2002,2003,2004,2005,2006,2007,2008,2009 Free Software Foundation, Inc.
+dnl Copyright 2001,2002,2003,2004,2005,2006,2007,2008,2009,2010 Free Software Foundation, Inc.
 dnl 
 dnl This file is part of GNU Radio
 dnl 
@@ -26,7 +26,10 @@ AC_CANONICAL_BUILD
 AC_CANONICAL_HOST
 AC_CANONICAL_TARGET
 
-AM_INIT_AUTOMAKE(gnuradio,3.2.2)
+GR_VERSION
+dnl ustar required to have pathnames > 99 chars
+_AM_SET_OPTION([tar-ustar])
+AM_INIT_AUTOMAKE(gnuradio,$RELEASE)
 
 DEFINES=""
 AC_SUBST(DEFINES)
@@ -121,19 +124,30 @@ dnl AC_DISABLE_SHARED	dnl don't build shared libraries
 AC_ENABLE_SHARED	dnl do build shared libraries
 AC_DISABLE_STATIC	dnl don't build static libraries
 m4_ifdef([LT_INIT],[LT_INIT],[AC_PROG_LIBTOOL])
-GR_FORTRAN
+dnl GR_FORTRAN
 
 GR_NO_UNDEFINED		dnl do we need the -no-undefined linker flag
 GR_SCRIPTING
+
+# Allow user to choose whether to generate SWIG/Python 
+# Default is enabled
+AC_ARG_ENABLE([python],
+  [AS_HELP_STRING([--enable-python],
+    [generate SWIG/Python components (default is yes)])],
+  [case "${enableval}" in
+     yes) enable_python=yes ;;
+     no) enable_python=no ;;
+     *) AC_MSG_ERROR([bad value ${enableval} for --enable-python]) ;;
+   esac],
+  [enable_python=yes]
+)
+AM_CONDITIONAL([PYTHON], [test x$enable_python = xyes])
 
 AC_CHECK_PROG([XMLTO],[xmlto],[yes],[])
 AM_CONDITIONAL([HAS_XMLTO], [test x$XMLTO = xyes])
 
 dnl Checks for libraries.
 AC_CHECK_LIB(socket,socket)
-
-dnl check for omnithreads (will soon be removed)
-GR_OMNITHREAD
 
 dnl Set the c++ compiler that we use for the build system when cross compiling
 if test x$CXX_FOR_BUILD = x
@@ -156,9 +170,9 @@ AC_HEADER_SYS_WAIT
 AC_CHECK_HEADERS(fcntl.h limits.h strings.h time.h sys/ioctl.h sys/time.h unistd.h)
 AC_CHECK_HEADERS(linux/ppdev.h dev/ppbus/ppi.h sys/mman.h sys/select.h sys/types.h)
 AC_CHECK_HEADERS(sys/resource.h stdint.h sched.h signal.h sys/syscall.h malloc.h)
-AC_CHECK_HEADERS(netinet/in.h)
 AC_CHECK_HEADERS(windows.h)
 AC_CHECK_HEADERS(vec_types.h)
+AC_CHECK_HEADERS(netdb.h netinet/in.h arpa/inet.h sys/types.h sys/socket.h)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -247,7 +261,17 @@ dnl We require the boost headers, thread lib and date_time lib.
 dnl AX_BOOST_BASE finds the headers and the lib dir (-L<foo>)
 dnl
 dnl calls AC_SUBST(BOOST_CPPFLAGS), AC_SUBST(BOOST_LDFLAGS) and defines HAVE_BOOST
-AX_BOOST_BASE([1.35])
+dnl
+dnl Current Boost version requirement is >=1.35 for all platforms except Darwin,
+dnl which requires >=1.37 for code in usrp host library.
+case "$host_os" in
+     darwin*)
+        AX_BOOST_BASE([1.37])
+        ;;
+      *)
+        AX_BOOST_BASE([1.35])
+        ;;
+esac
 
 dnl calls AC_SUBST(BOOST_THREAD_LIB), AC_SUBST(BOOST_CXXFLAGS) and defines HAVE_BOOST_THREAD
 AX_BOOST_THREAD
@@ -269,9 +293,24 @@ dnl AX_BOOST_TEST_EXEC_MONITOR
 dnl AX_BOOST_UNIT_TEST_FRAMEWORK
 dnl AX_BOOST_WSERIALIZATION
 
+BUILD_DATE=`date -u +"%a, %d %b %Y %R:%S"`
+AC_SUBST(BUILD_DATE)
 
-dnl If this is being done from a subversion tree, create variables
-GR_SUBVERSION
+dnl SYSCONFDIR substitution
+if test "${sysconfdir}" == "\${prefix}/etc" ; then
+   if test "${prefix}" == "NONE" ; then
+      SYSCONFDIR=["$ac_default_prefix/etc"]
+   else
+      SYSCONFDIR=["${prefix}/etc"]
+   fi
+else
+   SYSCONFDIR=[${sysconfdir}]
+fi
+AC_SUBST(SYSCONFDIR)
+
+dnl System configuration files
+GR_PREFSDIR=[$SYSCONFDIR/${PACKAGE}/conf.d]
+AC_SUBST(GR_PREFSDIR)
 
 dnl Component specific configuration
 dnl The order of the GR_ macros determines the order of compilation
@@ -297,25 +336,26 @@ AC_ARG_ENABLE(
 
 build_dirs="config"
 GRC_GRUEL                       dnl must come first
-GRC_OMNITHREAD			dnl must come before gnuradio-core and mblock
 GRC_GCELL
 GRC_GNURADIO_CORE
-GRC_PMT
-GRC_MBLOCK			dnl this must come after GRC_PMT
 GRC_USRP
 GRC_USRP2
 GRC_GR_USRP			dnl this must come after GRC_USRP
 GRC_GR_USRP2
 GRC_GR_GCELL			dnl this must come after GRC_GCELL and GRC_GNURADIO_CORE
+GRC_GR_MSDD6000	
 GRC_GR_AUDIO_ALSA
 GRC_GR_AUDIO_JACK
 GRC_GR_AUDIO_OSS
 GRC_GR_AUDIO_OSX
 GRC_GR_AUDIO_PORTAUDIO
 GRC_GR_AUDIO_WINDOWS
+GRC_GR_ATSC
+GRC_GR_COMEDI
 GRC_GR_CVSD_VOCODER
 GRC_GR_GPIO
 GRC_GR_GSM_FR_VOCODER
+GRC_GR_NOAA
 GRC_GR_PAGER
 GRC_GR_RADAR_MONO
 GRC_GR_RADIO_ASTRONOMY
@@ -324,7 +364,7 @@ GRC_GR_VIDEO_SDL
 GRC_GR_WXGUI
 GRC_GR_QTGUI
 GRC_GR_SOUNDER			dnl this must come after GRC_USRP
-GRC_GR_UTILS                    dnl this must come after GRC_GR_WXGUI
+GRC_GR_UTILS                   dnl this must come after GRC_GR_WXGUI
 GRC_GNURADIO_EXAMPLES		dnl must come after all GRC_GR_*
 GRC_GRC
 GRC_DOCS			dnl must be last
@@ -399,3 +439,5 @@ if test "$with_dirs" != ""; then
     echo These components will not be built.
     echo
 fi
+
+echo Configured GNU Radio release $RELEASE for build.

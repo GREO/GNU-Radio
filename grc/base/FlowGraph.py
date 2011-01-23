@@ -19,8 +19,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 from . import odict
 from Element import Element
-from Block import Block
-from Connection import Connection
 from .. gui import Messages
 
 class FlowGraph(Element):
@@ -68,6 +66,7 @@ class FlowGraph(Element):
 	def get_block(self, id): return filter(lambda b: b.get_id() == id, self.get_blocks())[0]
 	def get_blocks(self): return filter(lambda e: e.is_block(), self.get_elements())
 	def get_connections(self): return filter(lambda e: e.is_connection(), self.get_elements())
+	def get_children(self): return self.get_elements()
 	def get_elements(self):
 		"""
 		Get a list of all the elements.
@@ -102,7 +101,6 @@ class FlowGraph(Element):
 		@param key the block key
 		@return the new block or None if not found
 		"""
-		self.flag()
 		if key not in self.get_parent().get_block_keys(): return None
 		block = self.get_parent().get_new_block(self, key)
 		self.get_elements().append(block)
@@ -116,8 +114,7 @@ class FlowGraph(Element):
 		@throw Exception bad connection
 		@return the new connection
 		"""
-		self.flag()
-		connection = self.get_parent().Connection(self, porta, portb)
+		connection = self.get_parent().Connection(flow_graph=self, porta=porta, portb=portb)
 		self.get_elements().append(connection)
 		return connection
 
@@ -128,7 +125,6 @@ class FlowGraph(Element):
 		If the element is a block, remove its connections.
 		If the element is a connection, just remove the connection.
 		"""
-		self.flag()
 		if element not in self.get_elements(): return
 		#found a port, set to parent signal block
 		if element.is_port():
@@ -146,18 +142,6 @@ class FlowGraph(Element):
 		@throw NotImplementedError
 		"""
 		raise NotImplementedError
-
-	def validate(self):
-		"""
-		Validate the flow graph.
-		All connections and blocks must be valid.
-		"""
-		Element.validate(self)
-		for c in self.get_elements():
-			try:
-				c.validate()
-				assert c.is_valid()
-			except AssertionError: self.add_error_message('Element "%s" is not valid.'%c)
 
 	##############################################
 	## Import/Export Methods
@@ -198,7 +182,6 @@ class FlowGraph(Element):
 			#only load the block when the block key was valid
 			if block: block.import_data(block_n)
 			else: Messages.send_error_load('Block key "%s" not found in %s'%(key, self.get_parent()))
-		self.validate() #validate all blocks before connections are made (in case of nports)
 		#build the connections
 		for connection_n in connections_n:
 			#try to make the connection
@@ -225,3 +208,4 @@ class FlowGraph(Element):
 				#build the connection
 				self.connect(source, sink)
 			except AssertionError: Messages.send_error_load('Connection between %s(%s) and %s(%s) could not be made.'%(source_block_id, source_key, sink_block_id, sink_key))
+		self.rewrite() #global rewrite

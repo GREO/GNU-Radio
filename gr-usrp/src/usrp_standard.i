@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 /*
- * Copyright 2008 Free Software Foundation, Inc.
+ * Copyright 2008,2009 Free Software Foundation, Inc.
  * 
  * This file is part of GNU Radio
  * 
@@ -23,13 +23,13 @@
 // FIXME: move to usrp/usrpm component
 
 %{
-#include <usrp_standard.h>
+#include <usrp/usrp_standard.h>
 #include <usrp_spi_defs.h>
-#include <usrp_dbid.h>
+#include <usrp/usrp_dbid.h>
 %}
 
 %include <usrp_spi_defs.h>
-%include <usrp_dbid.h>
+%include <usrp/usrp_dbid.h>
 
 %constant int FPGA_MODE_NORMAL   = usrp_standard_rx::FPGA_MODE_NORMAL;
 %constant int FPGA_MODE_LOOPBACK = usrp_standard_rx::FPGA_MODE_LOOPBACK;

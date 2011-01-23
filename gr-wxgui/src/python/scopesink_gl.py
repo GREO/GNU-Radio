@@ -1,5 +1,5 @@
 #
-# Copyright 2008 Free Software Foundation, Inc.
+# Copyright 2008,2010 Free Software Foundation, Inc.
 #
 # This file is part of GNU Radio
 #
@@ -27,6 +27,7 @@ import common
 from gnuradio import gr
 from pubsub import pubsub
 from constants import *
+import math
 
 class ac_couple_block(gr.hier_block2):
 	"""
@@ -34,7 +35,7 @@ class ac_couple_block(gr.hier_block2):
 	Mute the low pass filter to disable ac coupling.
 	"""
 
-	def __init__(self, controller, ac_couple_key, ac_couple, sample_rate_key):
+	def __init__(self, controller, ac_couple_key, sample_rate_key):
 		gr.hier_block2.__init__(
 			self,
 			"ac_couple",
@@ -50,15 +51,15 @@ class ac_couple_block(gr.hier_block2):
 		self.connect(self, lpf, mute, (sub, 1))
 		#subscribe
 		controller.subscribe(ac_couple_key, lambda x: mute.set_mute(not x))
-		controller.subscribe(sample_rate_key, lambda x: lpf.set_taps(2.0/x))
+		controller.subscribe(sample_rate_key, lambda x: lpf.set_taps(0.05))
 		#initialize
-		controller[ac_couple_key] = ac_couple
+		controller[ac_couple_key] = controller[ac_couple_key]
 		controller[sample_rate_key] = controller[sample_rate_key]
 
 ##################################################
 # Scope sink block (wrapper for old wxgui)
 ##################################################
-class _scope_sink_base(gr.hier_block2):
+class _scope_sink_base(gr.hier_block2, common.wxgui_hb):
 	"""
 	A scope block with a gui window.
 	"""
@@ -71,12 +72,22 @@ class _scope_sink_base(gr.hier_block2):
 		size=scope_window.DEFAULT_WIN_SIZE,
 		v_scale=0,
 		t_scale=0,
+		v_offset=0,
 		xy_mode=False,
 		ac_couple=False,
 		num_inputs=1,
 		frame_rate=scope_window.DEFAULT_FRAME_RATE,
+                use_persistence=False,
+                persist_alpha=None,
 		**kwargs #do not end with a comma
 	):
+                #ensure analog alpha
+                if persist_alpha is None: 
+                  actual_frame_rate=float(frame_rate)
+                  analog_cutoff_freq=0.5 # Hertz
+                  #calculate alpha from wanted cutoff freq
+                  persist_alpha = 1.0 - math.exp(-2.0*math.pi*analog_cutoff_freq/actual_frame_rate)
+
 		if not t_scale: t_scale = 10.0/sample_rate
 		#init
 		gr.hier_block2.__init__(
@@ -102,25 +113,10 @@ class _scope_sink_base(gr.hier_block2):
 		self.controller.publish(TRIGGER_SLOPE_KEY, scope.get_trigger_slope)
 		self.controller.subscribe(TRIGGER_CHANNEL_KEY, scope.set_trigger_channel)
 		self.controller.publish(TRIGGER_CHANNEL_KEY, scope.get_trigger_channel)
-		#connect
-		if self._real:
-			for i in range(num_inputs):
-				self.connect(
-					(self, i),
-					ac_couple_block(self.controller, common.index_key(AC_COUPLE_KEY, i), ac_couple, SAMPLE_RATE_KEY),
-					(scope, i),
-				)
-		else:
-			for i in range(num_inputs):
-				c2f = gr.complex_to_float() 
-				self.connect((self, i), c2f)
-				for j in range(2):
-					self.connect(
-						(c2f, j), 
-						ac_couple_block(self.controller, common.index_key(AC_COUPLE_KEY, 2*i+j), ac_couple, SAMPLE_RATE_KEY),
-						(scope, 2*i+j),
-					)
-			num_inputs *= 2
+		actual_num_inputs = self._real and num_inputs or num_inputs*2
+		#init ac couple
+		for i in range(actual_num_inputs):
+			self.controller[common.index_key(AC_COUPLE_KEY, i)] = ac_couple
 		#start input watcher
 		common.input_watcher(msgq, self.controller, MSG_KEY)
 		#create window
@@ -130,10 +126,11 @@ class _scope_sink_base(gr.hier_block2):
 			size=size,
 			title=title,
 			frame_rate=frame_rate,
-			num_inputs=num_inputs,
+			num_inputs=actual_num_inputs,
 			sample_rate_key=SAMPLE_RATE_KEY,
 			t_scale=t_scale,
 			v_scale=v_scale,
+			v_offset=v_offset,
 			xy_mode=xy_mode,
 			ac_couple_key=AC_COUPLE_KEY,
 			trigger_level_key=TRIGGER_LEVEL_KEY,
@@ -142,8 +139,28 @@ class _scope_sink_base(gr.hier_block2):
 			trigger_channel_key=TRIGGER_CHANNEL_KEY,
 			decimation_key=DECIMATION_KEY,
 			msg_key=MSG_KEY,
+                        use_persistence=use_persistence,
+                        persist_alpha=persist_alpha,
 		)
 		common.register_access_methods(self, self.win)
+		#connect
+		if self._real:
+			for i in range(num_inputs):
+				self.wxgui_connect(
+					(self, i),
+					ac_couple_block(self.controller, common.index_key(AC_COUPLE_KEY, i), SAMPLE_RATE_KEY),
+					(scope, i),
+				)
+		else:
+			for i in range(num_inputs):
+				c2f = gr.complex_to_float() 
+				self.wxgui_connect((self, i), c2f)
+				for j in range(2):
+					self.connect(
+						(c2f, j), 
+						ac_couple_block(self.controller, common.index_key(AC_COUPLE_KEY, 2*i+j), SAMPLE_RATE_KEY),
+						(scope, 2*i+j),
+					)
 
 class scope_sink_f(_scope_sink_base):
 	_item_size = gr.sizeof_float
@@ -164,10 +181,11 @@ class test_top_block (stdgui2.std_top_block):
     def __init__(self, frame, panel, vbox, argv):
         stdgui2.std_top_block.__init__ (self, frame, panel, vbox, argv)
 
+        default_input_rate = 1e6
         if len(argv) > 1:
-            frame_decim = int(argv[1]) 
+            input_rate = int(argv[1]) 
         else:
-            frame_decim = 1
+            input_rate = default_input_rate
 
         if len(argv) > 2:
             v_scale = float(argv[2])  # start up at this v_scale value
@@ -177,14 +195,17 @@ class test_top_block (stdgui2.std_top_block):
         if len(argv) > 3:
             t_scale = float(argv[3])  # start up at this t_scale value
         else:
-            t_scale = .00003  # old behavior
+            t_scale = .00003*default_input_rate/input_rate # old behavior
 
-        print "frame decim %s  v_scale %s  t_scale %s" % (frame_decim,v_scale,t_scale)
+        print "input rate %s  v_scale %s  t_scale %s" % (input_rate,v_scale,t_scale)
             
-        input_rate = 1e6
 
         # Generate a complex sinusoid
-        self.src0 = gr.sig_source_c (input_rate, gr.GR_SIN_WAVE, 25.1e3, 1e3)
+        ampl=1.0e3
+        self.src0 = gr.sig_source_c (input_rate, gr.GR_SIN_WAVE, 25.1e3*input_rate/default_input_rate, ampl)
+        self.noise =gr.sig_source_c (input_rate, gr.GR_SIN_WAVE, 11.1*25.1e3*input_rate/default_input_rate, ampl/10) 
+        #self.noise =gr.noise_source_c(gr.GR_GAUSSIAN, ampl/10)
+        self.combine=gr.add_cc()
 
         # We add this throttle block so that this demo doesn't suck down
         # all the CPU available.  You normally wouldn't use it...
@@ -196,7 +217,9 @@ class test_top_block (stdgui2.std_top_block):
 
         # Ultimately this will be
         # self.connect("src0 throttle scope")
-	self.connect(self.src0, self.thr, scope) 
+	self.connect(self.src0,(self.combine,0))
+        self.connect(self.noise,(self.combine,1))
+        self.connect(self.combine, self.thr, scope) 
 
 def main ():
     app = stdgui2.stdapp (test_top_block, "O'Scope Test App")

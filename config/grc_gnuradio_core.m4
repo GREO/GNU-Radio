@@ -28,9 +28,8 @@ AC_DEFUN([GRC_GNURADIO_CORE],[
 	gnuradio_core_PYDIRPATH=$pythondir
     ])
 
-    dnl Don't do gnuradio-core if gruel or omnithread skipped
+    dnl Don't do gnuradio-core if gruel skipped
     GRC_CHECK_DEPENDENCY(gnuradio-core, gruel)
-    GRC_CHECK_DEPENDENCY(gnuradio-core, omnithread)
 
     dnl If execution gets to here, $passed will be:
     dnl   with : if the --with code didn't error out
@@ -86,7 +85,7 @@ AC_DEFUN([GRC_GNURADIO_CORE],[
         gnuradio-core/src/lib/filter/Makefile \
         gnuradio-core/src/lib/g72x/Makefile \
         gnuradio-core/src/lib/general/Makefile \
-        gnuradio-core/src/lib/general/gr_prefix.cc \
+        gnuradio-core/src/lib/general/gr_constants.cc \
         gnuradio-core/src/lib/gengen/Makefile \
         gnuradio-core/src/lib/io/Makefile \
         gnuradio-core/src/lib/missing/Makefile \

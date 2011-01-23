@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 /*
- * Copyright 2002,2008 Free Software Foundation, Inc.
+ * Copyright 2002,2008,2009 Free Software Foundation, Inc.
  * 
  * This file is part of GNU Radio
  * 
@@ -34,6 +34,7 @@ struct gr_cpu {
   static bool has_3dnow ();
   static bool has_3dnowext ();
   static bool has_altivec ();
+  static bool has_armv7_a ();
 };
 
 #endif /* _GR_CPU_H_ */
